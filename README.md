@@ -1,8 +1,8 @@
-# Kindle Display Server
+# Kindle Display Generator
 
-A Python-based server that generates custom grayscale images for Kindle e-ink displays. Uses FastAPI and matplotlib to create composite views with weather, Strava activities, calendar events, and custom text.
+A Python CLI tool that generates custom grayscale images for Kindle e-ink displays. Uses matplotlib to create composite views with weather, Strava activities, calendar events, and custom text.
 
-**Inspired by [Matt Healy's Kindle display project](https://matthealy.com/kindle)**, reimplemented in Python with matplotlib instead of Node.js/Puppeteer.
+**Inspired by [Matt Healy's Kindle display project](https://matthealy.com/kindle)**, reimplemented in Python with matplotlib instead of Node.js/Puppeteer. Designed to run via cron and serve static images rather than running a web server.
 
 ## Features
 
@@ -15,19 +15,12 @@ A Python-based server that generates custom grayscale images for Kindle e-ink di
 
 ## Architecture
 
-The server uses matplotlib's GridSpec to create a flexible layout where each data source renderer draws into its assigned axes. The complete image is generated on-demand and returned as a grayscale PNG.
+```
+Cron (every 30min) → generate_image.py → saves calendar.png to disk
+Kindle (every 6hr)  → wget → nginx/static server → calendar.png
+```
 
-```
-┌─────────────────────┐
-│   Weather (30%)     │
-├─────────────────────┤
-│   Strava (40%)      │
-├─────────────────────┤
-│   Calendar (20%)    │
-├─────────────────────┤
-│   Text (10%)        │
-└─────────────────────┘
-```
+The tool uses matplotlib's GridSpec to create a flexible layout where each data source renderer draws into its assigned axes. The complete image is generated and saved as a grayscale PNG file.
 
 ## Setup
 
@@ -88,22 +81,7 @@ WEATHER_LON_2=-122.4194
    GOOGLE_CALENDAR_IDS=primary,calendar_id_2@group.calendar.google.com,calendar_id_3@group.calendar.google.com
    ```
 
-### 3. Run with Docker (Recommended)
-
-The Docker image uses `uv` for fast dependency installation.
-
-```bash
-# Build and run
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop
-docker-compose down
-```
-
-### 4. Run Locally with uv (Recommended)
+### 3. Run Locally with uv (Recommended)
 
 [uv](https://github.com/astral-sh/uv) is a fast Python package installer and environment manager.
 
@@ -117,14 +95,11 @@ uv venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 uv pip install -e .
 
-# Run server
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# Or even simpler (uv handles the venv automatically):
-uv run --with . uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Generate image
+python generate_image.py /tmp/test.png
 ```
 
-### 5. Run Locally with pip (Alternative)
+### 4. Run Locally with pip (Alternative)
 
 ```bash
 # Create virtual environment
@@ -134,13 +109,11 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run server
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Generate image
+python generate_image.py /tmp/test.png
 ```
 
 ## Usage
-
-### Option 1: CLI Script (Recommended)
 
 Generate the image and save to disk, then serve as a static file:
 
@@ -151,41 +124,16 @@ python generate_image.py /path/to/output/calendar.png
 # Or with verbose logging
 python generate_image.py -v /var/www/html/img/calendar.png
 
+# View the generated image
+open /path/to/output/calendar.png  # macOS
+xdg-open /path/to/output/calendar.png  # Linux
+
 # Set up cron to regenerate every 30 minutes
 # Add to crontab:
 */30 * * * * cd /path/to/project && /path/to/venv/bin/python generate_image.py /var/www/html/img/calendar.png
-
-# Serve the static file with your existing web server (nginx, Apache, etc.)
 ```
 
-**Architecture:**
-```
-Cron (every 30min) → generate_image.py → saves calendar.png
-Kindle (every 6hr)  → wget → nginx/static server → calendar.png
-```
-
-### Option 2: Web Server
-
-Run as a FastAPI server that generates images on-demand:
-
-```bash
-# Start server
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-**Endpoints:**
-- `GET /` - Composite display image (758x1024 grayscale PNG for Kindle Paperwhite 2)
-- `GET /health` - Health check
-
-**Test:**
-```bash
-# Download the image
-curl http://localhost:8000/ > display.png
-
-# View it
-open display.png  # macOS
-xdg-open display.png  # Linux
-```
+**Note:** Serve the static file with your existing web server (nginx, Apache, etc.)
 
 ## Kindle Setup
 
@@ -271,14 +219,12 @@ Each renderer is in `app/renderers/`:
 
 ## Deployment
 
-### Recommended: CLI Script with Cron
-
 1. **Clone and install on your server:**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/kindle-display-server.git
-   cd kindle-display-server
+   git clone https://github.com/YOUR_USERNAME/kindle-display-generator.git
+   cd kindle-display-generator
    uv venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   source .venv/bin/activate
    uv pip install -e .
    ```
 
@@ -297,51 +243,15 @@ Each renderer is in `app/renderers/`:
    ```bash
    crontab -e
    # Add this line (adjust paths):
-   */30 * * * * cd /path/to/kindle-display-server && /path/to/kindle-display-server/.venv/bin/python generate_image.py /var/www/html/img/calendar.png
+   */30 * * * * cd /path/to/kindle-display-generator && /path/to/kindle-display-generator/.venv/bin/python generate_image.py /var/www/html/img/calendar.png
    ```
 
-5. **Serve the static file** with your existing web server (nginx, Apache, etc.)
-
-### Alternative: Web Server
-
-If you prefer to generate images on-demand:
-
-1. **Docker:**
-   ```bash
-   docker build -t kindle-display .
-   docker run -d -p 8000:8000 --env-file .env kindle-display
-   ```
-
-2. **Systemd Service:**
-   ```bash
-   # Create /etc/systemd/system/kindle-display.service
-   [Unit]
-   Description=Kindle Display Server
-   After=network.target
-
-   [Service]
-   Type=simple
-   User=youruser
-   WorkingDirectory=/path/to/project
-   Environment="PATH=/path/to/venv/bin"
-   ExecStart=/path/to/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
-   Restart=always
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. **Nginx Reverse Proxy:**
+5. **Serve the static file** with your existing web server (nginx, Apache, etc.):
    ```nginx
-   server {
-       listen 80;
-       server_name kindle.yourdomain.com;
-
-       location / {
-           proxy_pass http://localhost:8000;
-           proxy_set_header Host $host;
-           proxy_set_header X-Real-IP $remote_addr;
-       }
+   # Example nginx configuration
+   location /img/calendar.png {
+       alias /var/www/html/img/calendar.png;
+       expires 5m;
    }
    ```
 

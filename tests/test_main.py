@@ -6,18 +6,7 @@ import pytest
 from PIL import Image
 
 from app import config
-from app.main import app, generate_composite_image
-
-
-@pytest.mark.asyncio
-async def test_health_endpoint():
-    """Test health check endpoint"""
-    from fastapi.testclient import TestClient
-
-    client = TestClient(app)
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "healthy"}
+from app.main import generate_composite_image
 
 
 def test_generate_composite_image_returns_bytes():
@@ -41,22 +30,5 @@ def test_generate_composite_image_creates_correct_dimensions():
 
         assert img.size == (config.KINDLE_WIDTH, config.KINDLE_HEIGHT)
         assert img.mode == "L"  # Grayscale
-    except Exception:
-        pytest.skip("Skipping integration test - requires API credentials")
-
-
-@pytest.mark.asyncio
-async def test_display_endpoint_returns_png():
-    """Test main display endpoint returns PNG"""
-    from fastapi.testclient import TestClient
-
-    client = TestClient(app)
-
-    try:
-        response = client.get("/")
-        assert response.status_code == 200
-        assert response.headers["content-type"] == "image/png"
-        assert "cache-control" in response.headers
-        assert response.headers["cache-control"] == "no-cache, no-store, must-revalidate"
     except Exception:
         pytest.skip("Skipping integration test - requires API credentials")

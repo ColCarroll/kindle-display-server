@@ -1,10 +1,9 @@
 """
-FastAPI Kindle Display Server
+Kindle Display Image Generator
 Generates a composite grayscale image for Kindle display
 """
 
 import matplotlib
-from fastapi import FastAPI, Response
 
 matplotlib.use("Agg")  # Use non-interactive backend
 import io
@@ -20,8 +19,6 @@ from app.renderers import calendar, strava, text, weather
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-app = FastAPI(title="Kindle Display Server")
 
 
 def generate_composite_image() -> bytes:
@@ -146,35 +143,3 @@ def generate_composite_image() -> bytes:
     output_buf.seek(0)
 
     return output_buf.read()
-
-
-@app.get("/")
-async def get_display():
-    """
-    Main endpoint: returns composite Kindle display image
-    """
-    logger.info("Generating composite display image")
-    image_bytes = generate_composite_image()
-
-    return Response(
-        content=image_bytes,
-        media_type="image/png",
-        headers={
-            "Content-Length": str(len(image_bytes)),
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        },
-    )
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy"}
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host=config.HOST, port=config.PORT)
