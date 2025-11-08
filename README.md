@@ -1,5 +1,8 @@
 # Kindle Display Generator
 
+[![CI](https://github.com/ColCarroll/kindle-display-generator/workflows/CI/badge.svg)](https://github.com/ColCarroll/kindle-display-generator/actions)
+[![codecov](https://codecov.io/gh/ColCarroll/kindle-display-generator/branch/main/graph/badge.svg)](https://codecov.io/gh/ColCarroll/kindle-display-generator)
+
 A Python CLI tool that generates custom grayscale images for Kindle e-ink displays. Uses matplotlib to create composite views with weather, Strava activities, calendar events, and custom text.
 
 **Inspired by [Matt Healy's Kindle display project](https://matthealy.com/kindle)**, reimplemented in Python with matplotlib instead of Node.js/Puppeteer. Designed to run via cron and serve static images rather than running a web server.
@@ -221,7 +224,7 @@ Each renderer is in `app/renderers/`:
 
 1. **Clone and install on your server:**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/kindle-display-generator.git
+   git clone https://github.com/ColCarroll/kindle-display-generator.git
    cd kindle-display-generator
    uv venv
    source .venv/bin/activate

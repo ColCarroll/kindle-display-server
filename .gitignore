@@ -40,6 +40,7 @@ wheels/
 .coverage
 .coverage.*
 htmlcov/
+coverage.xml
 .ruff_cache/
 .pyright/
 
