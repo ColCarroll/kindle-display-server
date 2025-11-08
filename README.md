@@ -140,13 +140,44 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## Usage
 
-### Server Endpoints
+### Option 1: CLI Script (Recommended)
 
+Generate the image and save to disk, then serve as a static file:
+
+```bash
+# Generate image
+python generate_image.py /path/to/output/calendar.png
+
+# Or with verbose logging
+python generate_image.py -v /var/www/html/img/calendar.png
+
+# Set up cron to regenerate every 30 minutes
+# Add to crontab:
+*/30 * * * * cd /path/to/project && /path/to/venv/bin/python generate_image.py /var/www/html/img/calendar.png
+
+# Serve the static file with your existing web server (nginx, Apache, etc.)
+```
+
+**Architecture:**
+```
+Cron (every 30min) → generate_image.py → saves calendar.png
+Kindle (every 6hr)  → wget → nginx/static server → calendar.png
+```
+
+### Option 2: Web Server
+
+Run as a FastAPI server that generates images on-demand:
+
+```bash
+# Start server
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+**Endpoints:**
 - `GET /` - Composite display image (758x1024 grayscale PNG for Kindle Paperwhite 2)
 - `GET /health` - Health check
 
-### Test the Server
-
+**Test:**
 ```bash
 # Download the image
 curl http://localhost:8000/ > display.png
@@ -240,15 +271,48 @@ Each renderer is in `app/renderers/`:
 
 ## Deployment
 
-### Your Own Server
+### Recommended: CLI Script with Cron
 
-1. **Docker (Recommended)**
+1. **Clone and install on your server:**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/kindle-display-server.git
+   cd kindle-display-server
+   uv venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   uv pip install -e .
+   ```
+
+2. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API credentials
+   ```
+
+3. **Test image generation:**
+   ```bash
+   python generate_image.py /tmp/test.png
+   ```
+
+4. **Set up cron job:**
+   ```bash
+   crontab -e
+   # Add this line (adjust paths):
+   */30 * * * * cd /path/to/kindle-display-server && /path/to/kindle-display-server/.venv/bin/python generate_image.py /var/www/html/img/calendar.png
+   ```
+
+5. **Serve the static file** with your existing web server (nginx, Apache, etc.)
+
+### Alternative: Web Server
+
+If you prefer to generate images on-demand:
+
+1. **Docker:**
    ```bash
    docker build -t kindle-display .
    docker run -d -p 8000:8000 --env-file .env kindle-display
    ```
 
-2. **Systemd Service**
+2. **Systemd Service:**
    ```bash
    # Create /etc/systemd/system/kindle-display.service
    [Unit]
@@ -267,7 +331,7 @@ Each renderer is in `app/renderers/`:
    WantedBy=multi-user.target
    ```
 
-3. **Nginx Reverse Proxy**
+3. **Nginx Reverse Proxy:**
    ```nginx
    server {
        listen 80;
