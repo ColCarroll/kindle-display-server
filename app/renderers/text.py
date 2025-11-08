@@ -3,6 +3,7 @@ Text renderer for displaying custom text, quotes, or notes
 """
 
 import logging
+from datetime import datetime
 
 from matplotlib.axes import Axes
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def render_text(ax: Axes, text: str = ""):
     """
-    Render custom text on the given axes.
+    Render custom text on the given axes with a timestamp.
 
     Args:
         ax: matplotlib Axes object to draw on
@@ -22,20 +23,29 @@ def render_text(ax: Axes, text: str = ""):
     # Clear the axes
     ax.clear()
 
-    if not text:
-        # Display nothing if no text provided
-        ax.axis("off")
-        return
+    # Display the custom text if provided
+    if text:
+        ax.text(
+            0.5,
+            0.6,
+            text,
+            ha="center",
+            va="center",
+            fontsize=config.FONT_SIZE_SMALL,
+            wrap=True,
+            transform=ax.transAxes,
+        )
 
-    # Display the text
+    # Add timestamp at the bottom
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     ax.text(
-        0.5,
-        0.5,
-        text,
-        ha="center",
-        va="center",
-        fontsize=config.FONT_SIZE_SMALL,
-        wrap=True,
+        0.98,
+        0.05,
+        f"Updated: {timestamp}",
+        ha="right",
+        va="bottom",
+        fontsize=config.FONT_SIZE_SMALL - 1,
+        color="#666666",
         transform=ax.transAxes,
     )
 
