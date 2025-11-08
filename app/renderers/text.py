@@ -1,9 +1,9 @@
 """
 Text renderer for displaying custom text, quotes, or notes
 """
-import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
 import logging
+
+from matplotlib.axes import Axes
 
 from app import config
 

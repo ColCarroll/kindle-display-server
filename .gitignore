@@ -38,7 +38,10 @@ wheels/
 # Testing
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+.ruff_cache/
+.pyright/
 
 # IDEs
 .vscode/

@@ -3,12 +3,12 @@ Strava renderer using Strava API v3
 Displays recent activities and weekly summary
 """
 
-import requests
-import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
-import numpy as np
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
+
+import numpy as np
+import requests
+from matplotlib.axes import Axes
 
 from app import config
 

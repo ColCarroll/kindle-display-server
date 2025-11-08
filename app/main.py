@@ -2,18 +2,19 @@
 FastAPI Kindle Display Server
 Generates a composite grayscale image for Kindle display
 """
-from fastapi import FastAPI, Response
-from fastapi.responses import StreamingResponse
 import matplotlib
+from fastapi import FastAPI, Response
+
 matplotlib.use('Agg')  # Use non-interactive backend
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 import io
 import logging
+
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 from PIL import Image
 
 from app import config
-from app.renderers import weather, strava, calendar, text
+from app.renderers import calendar, strava, text, weather
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

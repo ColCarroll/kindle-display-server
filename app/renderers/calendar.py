@@ -2,11 +2,11 @@
 Calendar renderer
 Displays today's events and upcoming schedule
 """
-import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
-from datetime import datetime, timedelta
 import logging
 import os
+from datetime import datetime, timedelta
+
+from matplotlib.axes import Axes
 
 from app import config
 
@@ -42,9 +42,9 @@ def fetch_calendar_events():
         ]
 
     try:
+        from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
-        from google.auth.transport.requests import Request
 
         # Load credentials from token file
         creds = Credentials.from_authorized_user_file(
@@ -256,7 +256,7 @@ def render_calendar(ax: Axes):
 
     # RIGHT COLUMN: Future events
     y_right = 0.95
-    future_dates = sorted([d for d in events_by_day.keys() if d > tomorrow])
+    future_dates = sorted([d for d in events_by_day if d > tomorrow])
 
     for date in future_dates:
         if y_right < 0.02:

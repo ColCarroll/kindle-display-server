@@ -2,12 +2,11 @@
 Weather renderer using Weather.gov (National Weather Service) API
 Displays current conditions and forecast - FREE, no API key required!
 """
-import requests
-import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
-import numpy as np
-from datetime import datetime
 import logging
+from datetime import datetime
+
+import requests
+from matplotlib.axes import Axes
 
 from app import config
 
@@ -117,7 +116,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     # Consider nighttime as 8pm-6am (20:00-06:00)
     # Group consecutive nighttime hours into continuous spans
     in_night = False
-    night_start = None
+    night_start: float | None = None
 
     for i, dt in enumerate(times):
         is_night = dt.hour < 6 or dt.hour >= 20
@@ -126,13 +125,13 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
             # Start of night span
             night_start = i - 0.5
             in_night = True
-        elif not is_night and in_night:
+        elif not is_night and in_night and night_start is not None:
             # End of night span
             ax.axvspan(night_start, i - 0.5, color='gray', alpha=0.15, zorder=0)
             in_night = False
 
     # Handle case where forecast ends during nighttime
-    if in_night:
+    if in_night and night_start is not None:
         ax.axvspan(night_start, len(times) - 0.5, color='gray', alpha=0.15, zorder=0)
 
     # Plot temperature (left y-axis) - use numeric indices for smooth curve
@@ -168,7 +167,6 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     # Find indices where date changes (at midnight)
     xtick_positions = []
     xtick_labels = []
-    last_date = None
 
     for i, dt in enumerate(times):
         if dt.hour == 0 or i == 0:  # Midnight or first entry
@@ -177,7 +175,6 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
                 xtick_labels.append(dt.strftime('%a %I%p'))
             else:
                 xtick_labels.append(dt.strftime('%a'))
-            last_date = dt.date()
 
     if show_xlabel:
         ax.set_xticks(xtick_positions)

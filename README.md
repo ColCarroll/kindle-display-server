@@ -281,6 +281,49 @@ Each renderer is in `app/renderers/`:
    }
    ```
 
+## Development
+
+### Running Tests
+
+```bash
+# Run tests
+make test
+
+# Run tests with coverage
+make test-cov
+
+# Run linter
+make lint
+
+# Auto-fix linting issues
+make lint-fix
+
+# Check code formatting
+make format-check
+
+# Format code
+make format
+
+# Run type checker
+make typecheck
+
+# Run all checks (lint + format + typecheck)
+make check
+
+# Run everything (all checks + tests)
+make all
+```
+
+### Installing Development Dependencies
+
+```bash
+# With uv (recommended)
+uv pip install -e ".[dev]"
+
+# Or with pip
+pip install -e ".[dev]"
+```
+
 ## Troubleshooting
 
 ### Server Issues

@@ -3,6 +3,7 @@ Configuration for Kindle Display Server
 """
 
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
