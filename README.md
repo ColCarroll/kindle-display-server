@@ -1,7 +1,7 @@
 # Kindle Display Generator
 
-[![CI](https://github.com/ColCarroll/kindle-display-generator/workflows/CI/badge.svg)](https://github.com/ColCarroll/kindle-display-generator/actions)
-[![codecov](https://codecov.io/gh/ColCarroll/kindle-display-generator/branch/main/graph/badge.svg)](https://codecov.io/gh/ColCarroll/kindle-display-generator)
+[![CI](https://github.com/ColCarroll/kindle-display-server/workflows/CI/badge.svg)](https://github.com/ColCarroll/kindle-display-server/actions)
+[![codecov](https://codecov.io/gh/ColCarroll/kindle-display-server/branch/main/graph/badge.svg)](https://codecov.io/gh/ColCarroll/kindle-display-server)
 
 A Python CLI tool that generates custom grayscale images for Kindle e-ink displays. Uses matplotlib to create composite views with weather, Strava activities, calendar events, and custom text.
 
@@ -224,8 +224,8 @@ Each renderer is in `app/renderers/`:
 
 1. **Clone and install on your server:**
    ```bash
-   git clone https://github.com/ColCarroll/kindle-display-generator.git
-   cd kindle-display-generator
+   git clone https://github.com/ColCarroll/kindle-display-server.git
+   cd kindle-display-server
    uv venv
    source .venv/bin/activate
    uv pip install -e .
@@ -246,7 +246,7 @@ Each renderer is in `app/renderers/`:
    ```bash
    crontab -e
    # Add this line (adjust paths):
-   */30 * * * * cd /path/to/kindle-display-generator && /path/to/kindle-display-generator/.venv/bin/python generate_image.py /var/www/html/img/calendar.png
+   */30 * * * * cd /path/to/kindle-display-server && /path/to/kindle-display-server/.venv/bin/python generate_image.py /var/www/html/img/calendar.png
    ```
 
 5. **Serve the static file** with your existing web server (nginx, Apache, etc.):
