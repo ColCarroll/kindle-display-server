@@ -1,6 +1,7 @@
 """
 Text renderer for displaying custom text, quotes, or notes
 """
+
 import logging
 
 from matplotlib.axes import Axes
@@ -23,15 +24,20 @@ def render_text(ax: Axes, text: str = ""):
 
     if not text:
         # Display nothing if no text provided
-        ax.axis('off')
+        ax.axis("off")
         return
 
     # Display the text
-    ax.text(0.5, 0.5, text,
-            ha='center', va='center',
-            fontsize=config.FONT_SIZE_SMALL,
-            wrap=True,
-            transform=ax.transAxes)
+    ax.text(
+        0.5,
+        0.5,
+        text,
+        ha="center",
+        va="center",
+        fontsize=config.FONT_SIZE_SMALL,
+        wrap=True,
+        transform=ax.transAxes,
+    )
 
     # Turn off axis frame
-    ax.axis('off')
+    ax.axis("off")

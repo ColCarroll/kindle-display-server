@@ -20,13 +20,13 @@ FIGURE_HEIGHT = KINDLE_HEIGHT / DPI  # 10.24 inches
 # Total height is divided into 20 rows for fine-grained control
 GRID_ROWS = 20
 LAYOUT = {
-    "weather1": [0, 5],   # 5 rows - First location
+    "weather1": [0, 5],  # 5 rows - First location
     "weather2": [5, 10],  # 5 rows - Second location
     # Gap: row 10 (empty for spacing)
-    "strava": [11, 14],   # 3 rows - Running stats
+    "strava": [11, 14],  # 3 rows - Running stats
     # Gap: row 14 (empty for spacing)
-    "calendar": [15, 19], # 4 rows - Calendar events
-    "text": [19, 20],     # 1 row - Custom text
+    "calendar": [15, 19],  # 4 rows - Calendar events
+    "text": [19, 20],  # 1 row - Custom text
 }
 
 # Weather Configuration (Weather.gov - FREE, no API key required!)
@@ -50,8 +50,8 @@ GOOGLE_CALENDAR_IDS = os.getenv("GOOGLE_CALENDAR_IDS", "primary").split(",")
 BACKGROUND_COLOR = "white"
 TEXT_COLOR = "black"
 FONT_SIZE_TITLE = 12  # Increased for 758x1024
-FONT_SIZE_BODY = 10   # Increased for 758x1024
-FONT_SIZE_SMALL = 8   # Increased for 758x1024
+FONT_SIZE_BODY = 10  # Increased for 758x1024
+FONT_SIZE_SMALL = 8  # Increased for 758x1024
 
 # Custom text to display (optional)
 CUSTOM_TEXT = os.getenv("CUSTOM_TEXT", "")

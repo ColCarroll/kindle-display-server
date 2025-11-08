@@ -1,7 +1,5 @@
 """Tests for configuration module"""
 
-
-
 from app import config
 
 
@@ -47,6 +45,7 @@ def test_weather_coordinates_format(mock_env):
     """Test weather coordinates are properly formatted"""
     # Reload config with mock env
     import importlib
+
     importlib.reload(config)
 
     assert isinstance(config.WEATHER_LAT_1, str)
@@ -65,6 +64,7 @@ def test_font_sizes():
 def test_calendar_ids_parsing(mock_env):
     """Test calendar IDs are parsed from comma-separated string"""
     import importlib
+
     importlib.reload(config)
 
     assert isinstance(config.GOOGLE_CALENDAR_IDS, list)

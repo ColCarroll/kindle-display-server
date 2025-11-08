@@ -2,10 +2,11 @@
 FastAPI Kindle Display Server
 Generates a composite grayscale image for Kindle display
 """
+
 import matplotlib
 from fastapi import FastAPI, Response
 
-matplotlib.use('Agg')  # Use non-interactive backend
+matplotlib.use("Agg")  # Use non-interactive backend
 import io
 import logging
 
@@ -32,18 +33,19 @@ def generate_composite_image() -> bytes:
     fig = plt.figure(
         figsize=(config.FIGURE_WIDTH, config.FIGURE_HEIGHT),
         dpi=config.DPI,
-        facecolor=config.BACKGROUND_COLOR
+        facecolor=config.BACKGROUND_COLOR,
     )
 
     # Create GridSpec layout
     gs = GridSpec(
-        config.GRID_ROWS, 1,
+        config.GRID_ROWS,
+        1,
         figure=fig,
         hspace=0.4,  # Spacing between sections (increased for more gap between strava and calendar)
         left=0.15,  # More space from left edge
         right=0.95,
         top=0.92,  # More space at the top
-        bottom=0.05
+        bottom=0.05,
     )
 
     # Create axes for each section based on layout config
@@ -52,66 +54,76 @@ def generate_composite_image() -> bytes:
     for section, (start, end) in config.LAYOUT.items():
         if section == "weather2":
             # Share axes with weather1
-            axes[section] = fig.add_subplot(gs[start:end, 0],
-                                           sharex=axes["weather1"],
-                                           sharey=axes["weather1"])
+            axes[section] = fig.add_subplot(
+                gs[start:end, 0], sharex=axes["weather1"], sharey=axes["weather1"]
+            )
         else:
             axes[section] = fig.add_subplot(gs[start:end, 0])
 
     # Render each section
     try:
         logger.info("Rendering weather section 1")
-        weather.render_weather(axes["weather1"], config.WEATHER_LAT_1, config.WEATHER_LON_1,
-                             title="Home", show_xlabel=False)
+        weather.render_weather(
+            axes["weather1"],
+            config.WEATHER_LAT_1,
+            config.WEATHER_LON_1,
+            title="Home",
+            show_xlabel=False,
+        )
     except Exception as e:
         logger.error(f"Error rendering weather1: {e}")
-        axes["weather1"].text(0.5, 0.5, "Weather data unavailable",
-                            ha='center', va='center', fontsize=10)
-        axes["weather1"].axis('off')
+        axes["weather1"].text(
+            0.5, 0.5, "Weather data unavailable", ha="center", va="center", fontsize=10
+        )
+        axes["weather1"].axis("off")
 
     try:
         logger.info("Rendering weather section 2")
-        weather.render_weather(axes["weather2"], config.WEATHER_LAT_2, config.WEATHER_LON_2,
-                             title="Munchalm", show_xlabel=True)
+        weather.render_weather(
+            axes["weather2"],
+            config.WEATHER_LAT_2,
+            config.WEATHER_LON_2,
+            title="Munchalm",
+            show_xlabel=True,
+        )
     except Exception as e:
         logger.error(f"Error rendering weather2: {e}")
-        axes["weather2"].text(0.5, 0.5, "Weather data unavailable",
-                            ha='center', va='center', fontsize=10)
-        axes["weather2"].axis('off')
+        axes["weather2"].text(
+            0.5, 0.5, "Weather data unavailable", ha="center", va="center", fontsize=10
+        )
+        axes["weather2"].axis("off")
 
     try:
         logger.info("Rendering strava section")
         strava.render_strava(axes["strava"])
     except Exception as e:
         logger.error(f"Error rendering strava: {e}")
-        axes["strava"].text(0.5, 0.5, "Strava data unavailable",
-                           ha='center', va='center', fontsize=10)
-        axes["strava"].axis('off')
+        axes["strava"].text(
+            0.5, 0.5, "Strava data unavailable", ha="center", va="center", fontsize=10
+        )
+        axes["strava"].axis("off")
 
     try:
         logger.info("Rendering calendar section")
         calendar.render_calendar(axes["calendar"])
     except Exception as e:
         logger.error(f"Error rendering calendar: {e}")
-        axes["calendar"].text(0.5, 0.5, "Calendar data unavailable",
-                             ha='center', va='center', fontsize=10)
-        axes["calendar"].axis('off')
+        axes["calendar"].text(
+            0.5, 0.5, "Calendar data unavailable", ha="center", va="center", fontsize=10
+        )
+        axes["calendar"].axis("off")
 
     try:
         logger.info("Rendering text section")
         text.render_text(axes["text"], config.CUSTOM_TEXT)
     except Exception as e:
         logger.error(f"Error rendering text: {e}")
-        axes["text"].axis('off')
+        axes["text"].axis("off")
 
     # Save to bytes buffer
     buf = io.BytesIO()
     plt.savefig(
-        buf,
-        format='png',
-        dpi=config.DPI,
-        facecolor=config.BACKGROUND_COLOR,
-        edgecolor='none'
+        buf, format="png", dpi=config.DPI, facecolor=config.BACKGROUND_COLOR, edgecolor="none"
     )
     plt.close(fig)
 
@@ -120,18 +132,17 @@ def generate_composite_image() -> bytes:
     img = Image.open(buf)
 
     # Convert to grayscale (L mode)
-    img_gray = img.convert('L')
+    img_gray = img.convert("L")
 
     # Ensure exact dimensions (resize if needed)
     if img_gray.size != (config.KINDLE_WIDTH, config.KINDLE_HEIGHT):
         img_gray = img_gray.resize(
-            (config.KINDLE_WIDTH, config.KINDLE_HEIGHT),
-            Image.Resampling.LANCZOS
+            (config.KINDLE_WIDTH, config.KINDLE_HEIGHT), Image.Resampling.LANCZOS
         )
 
     # Save as grayscale PNG
     output_buf = io.BytesIO()
-    img_gray.save(output_buf, format='PNG', optimize=True)
+    img_gray.save(output_buf, format="PNG", optimize=True)
     output_buf.seek(0)
 
     return output_buf.read()
@@ -152,8 +163,8 @@ async def get_display():
             "Content-Length": str(len(image_bytes)),
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
-            "Expires": "0"
-        }
+            "Expires": "0",
+        },
     )
 
 
@@ -165,4 +176,5 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host=config.HOST, port=config.PORT)
