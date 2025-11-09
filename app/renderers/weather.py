@@ -86,7 +86,12 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     periods = data["periods"]
     city = data["city"]
 
-    # Extract forecast data (hourly)
+    # Get current time and round down to the most recent hour
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    current_hour = now.replace(minute=0, second=0, microsecond=0)
+
+    # Extract forecast data (hourly), filtering out past hours
     times = []
     temps = []
     precip_probs = []
@@ -95,6 +100,11 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     for period in periods:
         # Parse ISO 8601 timestamp for hourly data
         start_time = datetime.fromisoformat(period["startTime"].replace("Z", "+00:00"))
+
+        # Skip periods that are in the past
+        if start_time < current_hour:
+            continue
+
         times.append(start_time)
         temps.append(period["temperature"])
 
@@ -111,6 +121,19 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
             keyword in forecast for keyword in ["snow", "flurries", "sleet", "wintry", "freezing"]
         )
         has_snow.append(is_snowy)
+
+    # If all data is stale (past), show error
+    if not times:
+        ax.text(
+            0.5,
+            0.5,
+            "Weather data is stale",
+            ha="center",
+            va="center",
+            fontsize=config.FONT_SIZE_BODY,
+        )
+        ax.axis("off")
+        return
 
     # Clear and setup axes
     ax.clear()
