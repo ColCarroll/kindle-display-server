@@ -4,6 +4,7 @@ Displays current conditions and forecast - FREE, no API key required!
 """
 
 import logging
+import time
 from datetime import datetime
 
 import requests
@@ -12,6 +13,32 @@ from matplotlib.axes import Axes
 from app import config
 
 logger = logging.getLogger(__name__)
+
+
+def _fetch_with_retry(url, headers, max_retries=3, timeout=20):
+    """Fetch URL with retry logic and exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                wait_time = 2**attempt  # Exponential backoff: 1s, 2s, 4s
+                logger.warning(
+                    f"Timeout on attempt {attempt + 1}/{max_retries}, retrying in {wait_time}s..."
+                )
+                time.sleep(wait_time)
+            else:
+                raise
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                wait_time = 2**attempt
+                logger.warning(f"Request failed on attempt {attempt + 1}/{max_retries}: {e}, retrying...")
+                time.sleep(wait_time)
+            else:
+                raise
+    return None
 
 
 def fetch_weather_data(lat=None, lon=None):
@@ -32,8 +59,7 @@ def fetch_weather_data(lat=None, lon=None):
         points_url = f"https://api.weather.gov/points/{lat},{lon}"
         logger.info(f"Fetching weather gridpoint from {points_url}")
 
-        points_response = requests.get(points_url, headers=headers, timeout=10)
-        points_response.raise_for_status()
+        points_response = _fetch_with_retry(points_url, headers)
         points_data = points_response.json()
 
         # Extract forecast URLs and location info
@@ -43,8 +69,7 @@ def fetch_weather_data(lat=None, lon=None):
 
         # Step 2: Get hourly forecast (much higher fidelity - ~156 hours available)
         logger.info(f"Fetching hourly forecast from {forecast_hourly_url}")
-        forecast_response = requests.get(forecast_hourly_url, headers=headers, timeout=10)
-        forecast_response.raise_for_status()
+        forecast_response = _fetch_with_retry(forecast_hourly_url, headers)
         forecast_data = forecast_response.json()
 
         return {
