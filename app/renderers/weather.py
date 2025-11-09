@@ -5,7 +5,7 @@ Displays current conditions and forecast - FREE, no API key required!
 
 import logging
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
 import requests
 from matplotlib.axes import Axes
@@ -112,7 +112,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     city = data["city"]
 
     # Get current time and round down to the most recent hour
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(UTC)
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
     # Extract forecast data (hourly), filtering out past hours
