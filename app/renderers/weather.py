@@ -87,8 +87,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     city = data["city"]
 
     # Get current time and round down to the most recent hour
-    from datetime import timezone
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.UTC)
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
     # Extract forecast data (hourly), filtering out past hours
