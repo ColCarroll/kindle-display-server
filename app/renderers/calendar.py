@@ -172,14 +172,14 @@ def render_calendar(ax: Axes):
             events_by_day[event_date] = []
         events_by_day[event_date].append(event)
 
-    # Draw vertical divider line between columns
-    ax.plot([0.48, 0.48], [0.05, 0.95], "k-", linewidth=0.5, transform=ax.transAxes, zorder=1)
+    # Draw vertical divider line between columns (moved left)
+    ax.plot([0.40, 0.40], [0.05, 0.95], "k-", linewidth=0.5, transform=ax.transAxes, zorder=1)
 
-    # Helper function to render a day's events
-    def render_day_events(day_date, day_label, x_start, y_start):
+    # Helper function to render a day's events with text wrapping
+    def render_day_events(day_date, day_label, x_start, y_start, max_width):
         y_pos = y_start
-        day_header_height = 0.08
-        event_line_height = 0.06
+        day_header_height = 0.10
+        event_line_height = 0.08  # More spacing between events
 
         # Draw day header
         ax.text(
@@ -266,12 +266,18 @@ def render_calendar(ax: Axes):
                     transform=ax.transAxes,
                 )
 
-                # Draw event title (left-aligned after time)
+                # Draw event title with simple truncation if needed
                 event_x = time_x + 0.02  # Small gap after time
+                # Calculate max chars based on available width (roughly 30-40 chars per column)
+                max_chars = int(max_width * 100)  # Much more generous
+
+                # Truncate if too long
+                display_summary = summary if len(summary) <= max_chars else summary[:max_chars-3] + "..."
+
                 ax.text(
                     event_x,
                     y_pos,
-                    summary,
+                    display_summary,
                     ha="left",
                     va="top",
                     fontsize=config.FONT_SIZE_SMALL,
@@ -283,21 +289,23 @@ def render_calendar(ax: Axes):
         return y_pos
 
     # LEFT COLUMN: Today and Tomorrow
+    left_width = 0.38  # Width available for left column
     y_left = 0.95
-    y_left = render_day_events(today, "Today", 0.0, y_left)
+    y_left = render_day_events(today, "Today", 0.0, y_left, left_width)
     y_left -= 0.03  # Gap between sections
-    render_day_events(tomorrow, "Tomorrow", 0.0, y_left)
+    render_day_events(tomorrow, "Tomorrow", 0.0, y_left, left_width)
 
-    # RIGHT COLUMN: Future events
+    # RIGHT COLUMN: Next 3 days after tomorrow
+    right_width = 0.58  # Width available for right column
     y_right = 0.95
     future_dates = sorted([d for d in events_by_day if d > tomorrow])
 
-    for date in future_dates:
+    for i, date in enumerate(future_dates[:3]):  # Only show next 3 days
         if y_right < 0.02:
             break
 
         day_label = date.strftime("%a %m/%d").replace(" 0", " ")
-        y_right = render_day_events(date, day_label, 0.50, y_right)
+        y_right = render_day_events(date, day_label, 0.42, y_right, right_width)
         y_right -= 0.02  # Small gap between days
 
     # Turn off axis frame

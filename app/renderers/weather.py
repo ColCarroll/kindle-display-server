@@ -64,17 +64,24 @@ def fetch_weather_data(lat=None, lon=None):
 
         # Extract forecast URLs and location info
         forecast_hourly_url = points_data["properties"]["forecastHourly"]
+        gridpoint_url = points_data["properties"]["forecastGridData"]
         city = points_data["properties"]["relativeLocation"]["properties"]["city"]
         state = points_data["properties"]["relativeLocation"]["properties"]["state"]
 
-        # Step 2: Get hourly forecast (much higher fidelity - ~156 hours available)
+        # Step 2: Get hourly forecast (for temps and descriptive text)
         logger.info(f"Fetching hourly forecast from {forecast_hourly_url}")
         forecast_response = _fetch_with_retry(forecast_hourly_url, headers)
         forecast_data = forecast_response.json()
 
+        # Step 3: Get raw gridpoint data (for quantitative precipitation)
+        logger.info(f"Fetching gridpoint data from {gridpoint_url}")
+        gridpoint_response = _fetch_with_retry(gridpoint_url, headers)
+        gridpoint_data = gridpoint_response.json()
+
         return {
             "city": f"{city}, {state}",
             "periods": forecast_data["properties"]["periods"][:120],  # 5 days of hourly data
+            "gridpoint": gridpoint_data["properties"],  # Raw gridpoint data with QPF
         }
 
     except Exception as e:
@@ -110,16 +117,49 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
 
     periods = data["periods"]
     city = data["city"]
+    gridpoint = data.get("gridpoint", {})
 
     # Get current time and round down to the most recent hour
     now = datetime.now(UTC)
     current_hour = now.replace(minute=0, second=0, microsecond=0)
+
+    # Extract gridpoint precipitation data (time-series format)
+    qpf_values = gridpoint.get("quantitativePrecipitation", {}).get("values", [])
+    snow_values = gridpoint.get("snowfallAmount", {}).get("values", [])
+
+    # Create lookup dictionaries for QPF and snow by hour
+    qpf_by_hour = {}
+    snow_by_hour = {}
+
+    # Parse QPF data
+    for qpf_entry in qpf_values:
+        valid_time = qpf_entry.get("validTime", "")
+        value = qpf_entry.get("value")
+
+        if value is not None and "/" in valid_time:
+            # Format is like "2024-01-15T12:00:00+00:00/PT1H"
+            start_time_str = valid_time.split("/")[0]
+            start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+            # Convert from mm to inches
+            qpf_by_hour[start_time.replace(minute=0, second=0, microsecond=0)] = value / 25.4
+
+    # Parse snow data
+    for snow_entry in snow_values:
+        valid_time = snow_entry.get("validTime", "")
+        value = snow_entry.get("value")
+
+        if value is not None and "/" in valid_time:
+            start_time_str = valid_time.split("/")[0]
+            start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+            # Convert from mm to inches
+            snow_by_hour[start_time.replace(minute=0, second=0, microsecond=0)] = value / 25.4
 
     # Extract forecast data (hourly), filtering out past hours
     times = []
     temps = []
     precip_probs = []
     has_snow = []  # Track if snow is in forecast for this period
+    precip_amounts = []  # Track quantitative precipitation from gridpoint
 
     for period in periods:
         # Parse ISO 8601 timestamp for hourly data
@@ -139,11 +179,19 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
         else:
             precip_probs.append(0)
 
-        # Check if snow is in the forecast
+        # Get quantitative precipitation from gridpoint data
+        hour_key = start_time.replace(minute=0, second=0, microsecond=0)
+        qpf_amount = qpf_by_hour.get(hour_key, 0)
+        snow_amount = snow_by_hour.get(hour_key, 0)
+
+        # Use snow amount if available, otherwise rain amount
+        precip_amounts.append(max(qpf_amount, snow_amount))
+
+        # Check if snow is in the forecast (either from text or from snow data)
         forecast = period.get("shortForecast", "").lower()
         is_snowy = any(
             keyword in forecast for keyword in ["snow", "flurries", "sleet", "wintry", "freezing"]
-        )
+        ) or snow_amount > 0
         has_snow.append(is_snowy)
 
     # If all data is stale (past), show error
@@ -193,16 +241,16 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     ax.plot(range(len(temps)), temps, linewidth=1.5, color=color_temp, zorder=3)
     ax.set_ylabel(
         "°F",
-        fontsize=config.FONT_SIZE_SMALL,
+        fontsize=config.FONT_SIZE_BODY,
         color=color_temp,
         rotation=0,
         labelpad=10,
         ha="right",
         va="center",
     )
-    ax.tick_params(axis="y", labelcolor=color_temp, labelsize=config.FONT_SIZE_SMALL)
+    ax.tick_params(axis="y", labelcolor=color_temp, labelsize=config.FONT_SIZE_BODY)
 
-    # Create second y-axis for precipitation
+    # Create second y-axis for precipitation amounts (in inches)
     ax2 = ax.twinx()
 
     # Remove spines from second axis
@@ -210,33 +258,104 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
         spine.set_visible(False)
 
     color_precip = "#666666"
-    ax2.plot(
-        range(len(precip_probs)),
-        precip_probs,
-        linewidth=1.5,
-        color=color_precip,
-        linestyle="--",
-        alpha=0.7,
-        zorder=3,
-    )
-    # Hide precipitation axis labels and ticks completely
-    ax2.tick_params(
-        axis="y", which="both", left=False, right=False, labelleft=False, labelright=False
-    )
-    ax2.set_ylim(0, 100)  # Always show full 0-100% range
 
-    # Add snowflake markers where snow is expected
-    snow_indices = [i for i, is_snowy in enumerate(has_snow) if is_snowy and precip_probs[i] > 0]
-    if snow_indices:
-        snow_precip_values = [precip_probs[i] for i in snow_indices]
-        ax2.scatter(
-            snow_indices,
-            snow_precip_values,
-            marker="*",
-            s=30,
-            color=color_precip,
-            alpha=0.8,
-            zorder=5,
+    # Set up right y-axis for precipitation
+    max_precip = max(precip_amounts) if precip_amounts else 0.1
+    ax2.set_ylim(0, max(0.5, max_precip * 1.2))  # At least 0.5", or 120% of max
+    ax2.set_ylabel(
+        "in/hr",
+        fontsize=config.FONT_SIZE_BODY,
+        color=color_precip,
+        rotation=0,
+        labelpad=15,
+        ha="left",
+        va="center",
+    )
+
+    # Format y-axis tick labels with " for inches
+    ax2.tick_params(axis="y", labelcolor=color_precip, labelsize=config.FONT_SIZE_BODY, labelright=True)
+    # Use a formatter to add " suffix
+    from matplotlib.ticker import FuncFormatter
+    ax2.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y:.1f}"'))
+
+    # Plot precipitation as vertical dotted lines with markers on top
+    for i, amount in enumerate(precip_amounts):
+        if amount > 0:
+            # Draw dotted vertical line from 0 to amount
+            ax2.vlines(
+                i,
+                0,
+                amount,
+                colors=color_precip,
+                linestyles=":",
+                alpha=0.7,
+                linewidth=1.5,
+                zorder=3,
+            )
+
+            # Add marker on top - * for snow, o for rain
+            marker = "*" if has_snow[i] else "o"
+            marker_size = 40 if has_snow[i] else 20
+            ax2.scatter(
+                [i],
+                [amount],
+                marker=marker,
+                s=marker_size,
+                color=color_precip,
+                alpha=0.8,
+                zorder=5,
+            )
+
+    # Calculate daily precipitation totals and display in daytime columns
+    # Group by date
+    daily_precip = {}
+    daily_is_snow = {}
+
+    for i, dt in enumerate(times):
+        date_key = dt.date()
+        if date_key not in daily_precip:
+            daily_precip[date_key] = 0
+            daily_is_snow[date_key] = False
+
+        daily_precip[date_key] += precip_amounts[i]
+        # If any hour has snow, mark the day as having snow
+        if has_snow[i]:
+            daily_is_snow[date_key] = True
+
+    # Find daytime periods (roughly 6am-8pm) for each day and place text
+    for date_key, total_precip in daily_precip.items():
+        if total_precip < 0.01:  # Skip if less than 0.01"
+            continue
+
+        # Find all indices for this day during daytime hours
+        day_indices = [
+            i for i, dt in enumerate(times)
+            if dt.date() == date_key and 6 <= dt.hour < 20
+        ]
+
+        if not day_indices:
+            continue
+
+        # Place text in middle of daytime period
+        center_idx = day_indices[len(day_indices) // 2]
+
+        # Format precipitation text - use snowflake for snow, nothing for rain
+        if daily_is_snow[date_key]:
+            precip_text = f"{total_precip:.1f}\"❄"
+        else:
+            precip_text = f"{total_precip:.1f}\""
+
+        # Place text on the chart
+        ax.text(
+            center_idx,
+            ax.get_ylim()[1] * 0.95,  # Near top of chart
+            precip_text,
+            ha="center",
+            va="top",
+            fontsize=config.FONT_SIZE_SMALL,
+            color="black",
+            weight="bold",
+            zorder=10,
         )
 
     # Set x-axis labels to show dates at midnight
@@ -245,16 +364,13 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     xtick_labels = []
 
     for i, dt in enumerate(times):
-        if dt.hour == 0 or i == 0:  # Midnight or first entry
+        if dt.hour == 0:  # Only at midnight, skip first entry
             xtick_positions.append(i)
-            if i == 0:
-                xtick_labels.append(dt.strftime("%a %I%p"))
-            else:
-                xtick_labels.append(dt.strftime("%a"))
+            xtick_labels.append(dt.strftime("%a"))
 
     if show_xlabel:
         ax.set_xticks(xtick_positions)
-        ax.set_xticklabels(xtick_labels, fontsize=config.FONT_SIZE_SMALL, rotation=45, ha="right")
+        ax.set_xticklabels(xtick_labels, fontsize=config.FONT_SIZE_BODY, rotation=45, ha="right")
     else:
         ax.set_xticks([])
         ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
