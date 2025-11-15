@@ -210,11 +210,16 @@ def render_strava(ax: Axes):
     week_start = now - timedelta(days=7)
     year_start = datetime(now.year, 1, 1)
 
-    # Calculate days elapsed in year (for pace calculation)
+    # Calculate time elapsed and remaining in year (for pace calculation)
     days_elapsed = (now - year_start).days + 1
     days_in_year = (
         366 if now.year % 4 == 0 and (now.year % 100 != 0 or now.year % 400 == 0) else 365
     )
+
+    # Calculate precise time remaining in year using seconds
+    year_end = datetime(now.year + 1, 1, 1)
+    seconds_remaining = (year_end - now).total_seconds()
+    days_remaining_precise = seconds_remaining / 86400  # Convert seconds to days
 
     # Try to use the stats endpoint first (much faster)
     yearly_distance_mi = None
@@ -297,11 +302,8 @@ def render_strava(ax: Axes):
     # Layout parameters - everything on one line (moved higher)
     line_y = 0.65  # Higher up in the chart area
 
-    # Calculate days remaining in year
-    days_remaining = days_in_year - days_elapsed
-
     # Left side: 7-day stat (larger text)
-    stat_x = 0.05
+    stat_x = 0.01
     ax.text(
         stat_x,
         line_y,
@@ -373,8 +375,12 @@ def render_strava(ax: Axes):
     miles_needed_for_x_min = x_min - yearly_distance_mi
     miles_needed_for_x_max = x_max - yearly_distance_mi
 
-    miles_per_day_for_x_min = miles_needed_for_x_min / days_remaining if days_remaining > 0 else 0
-    miles_per_day_for_x_max = miles_needed_for_x_max / days_remaining if days_remaining > 0 else 0
+    miles_per_day_for_x_min = (
+        miles_needed_for_x_min / days_remaining_precise if days_remaining_precise > 0 else 0
+    )
+    miles_per_day_for_x_max = (
+        miles_needed_for_x_max / days_remaining_precise if days_remaining_precise > 0 else 0
+    )
 
     # Left: x_min with miles/day needed from today
     ax.text(
