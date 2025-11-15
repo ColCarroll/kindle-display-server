@@ -5,9 +5,11 @@ Displays current conditions and forecast - FREE, no API key required!
 
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import requests
+from astral import LocationInfo
+from astral.sun import sun
 from matplotlib.axes import Axes
 
 from app import config
@@ -89,6 +91,23 @@ def fetch_weather_data(lat=None, lon=None):
         return None
 
 
+def _get_sunrise_sunset(lat, lon, date):
+    """
+    Calculate sunrise and sunset times for a given location and date.
+
+    Args:
+        lat: Latitude
+        lon: Longitude
+        date: datetime.date object
+
+    Returns:
+        tuple: (sunrise datetime, sunset datetime) in UTC
+    """
+    location = LocationInfo(latitude=lat, longitude=lon)
+    s = sun(location.observer, date=date, tzinfo=timezone.utc)
+    return s["sunrise"], s["sunset"]
+
+
 def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     """
     Render weather information on the given axes.
@@ -101,6 +120,12 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
         title: Custom title (optional, defaults to city name from API)
         show_xlabel: Whether to show x-axis labels (optional, defaults to True)
     """
+    # Set default lat/lon if not provided
+    if lat is None:
+        lat = config.WEATHER_LAT_1
+    if lon is None:
+        lon = config.WEATHER_LON_1
+
     data = fetch_weather_data(lat, lon)
 
     if not data:
@@ -120,7 +145,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     gridpoint = data.get("gridpoint", {})
 
     # Get current time and round down to the most recent hour
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
     # Extract gridpoint precipitation data (time-series format)
@@ -215,13 +240,23 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
         spine.set_visible(False)
 
     # Add nighttime shading using axvspan (before plotting data so it's in background)
-    # Consider nighttime as 8pm-6am (20:00-06:00)
+    # Use actual sunrise/sunset times for the location
+    # Build a cache of sunrise/sunset times by date
+    sunrise_sunset_cache = {}
+    for dt in times:
+        date_key = dt.date()
+        if date_key not in sunrise_sunset_cache:
+            sunrise, sunset = _get_sunrise_sunset(lat, lon, date_key)
+            sunrise_sunset_cache[date_key] = (sunrise, sunset)
+
     # Group consecutive nighttime hours into continuous spans
     in_night = False
     night_start: float | None = None
 
     for i, dt in enumerate(times):
-        is_night = dt.hour < 6 or dt.hour >= 20
+        sunrise, sunset = sunrise_sunset_cache[dt.date()]
+        # It's nighttime if before sunrise or after sunset
+        is_night = dt < sunrise or dt >= sunset
 
         if is_night and not in_night:
             # Start of night span
@@ -340,10 +375,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
         center_idx = day_indices[len(day_indices) // 2]
 
         # Format precipitation text - use snowflake for snow, nothing for rain
-        if daily_is_snow[date_key]:
-            precip_text = f"{total_precip:.1f}\"❄"
-        else:
-            precip_text = f"{total_precip:.1f}\""
+        precip_text = f"{total_precip:.1f}\"❄" if daily_is_snow[date_key] else f"{total_precip:.1f}\""
 
         # Place text on the chart
         ax.text(

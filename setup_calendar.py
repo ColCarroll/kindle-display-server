@@ -13,7 +13,7 @@ Prerequisites:
 """
 
 import os
-import json
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -81,11 +81,11 @@ def setup_calendar():
             print(f"  - {calendar['summary']} (ID: {calendar['id']})")
 
         print("\n📝 Next steps:")
-        print(f"1. Add this line to your .env file:")
+        print("1. Add this line to your .env file:")
         print(f"   GOOGLE_CALENDAR_TOKEN_FILE={os.path.abspath(token_file)}")
-        print(f"2. Choose which calendar to use and add:")
-        print(f"   GOOGLE_CALENDAR_ID=<calendar-id>")
-        print(f"   (Use 'primary' for your main calendar)")
+        print("2. Choose which calendar to use and add:")
+        print("   GOOGLE_CALENDAR_ID=<calendar-id>")
+        print("   (Use 'primary' for your main calendar)")
 
         return True
 
