@@ -5,6 +5,7 @@
 credentials.json
 token.json
 strava_auth_url.txt
+CLAUDE.md
 
 # Test/development artifacts
 kindle_test*.png
