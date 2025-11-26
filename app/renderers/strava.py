@@ -4,7 +4,7 @@ Displays recent activities and weekly summary
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import requests
@@ -28,7 +28,7 @@ def refresh_access_token():
         return None
 
     # Check if cached token is still valid
-    if _access_token_cache and _token_expiry and datetime.now() < _token_expiry:
+    if _access_token_cache and _token_expiry and datetime.now(UTC) < _token_expiry:
         return _access_token_cache
 
     url = "https://www.strava.com/oauth/token"
@@ -45,7 +45,7 @@ def refresh_access_token():
         token_data = response.json()
 
         _access_token_cache = token_data["access_token"]
-        _token_expiry = datetime.now() + timedelta(
+        _token_expiry = datetime.now(UTC) + timedelta(
             seconds=token_data["expires_in"] - 300
         )  # 5min buffer
 
@@ -206,9 +206,9 @@ def render_strava(ax: Axes):
     ax.clear()
 
     # Calculate date ranges
-    now = datetime.now()
+    now = datetime.now(UTC)
     week_start = now - timedelta(days=7)
-    year_start = datetime(now.year, 1, 1)
+    year_start = datetime(now.year, 1, 1, tzinfo=UTC)
 
     # Calculate time elapsed and remaining in year (for pace calculation)
     days_elapsed = (now - year_start).days + 1
@@ -217,7 +217,7 @@ def render_strava(ax: Axes):
     )
 
     # Calculate precise time remaining in year using seconds
-    year_end = datetime(now.year + 1, 1, 1)
+    year_end = datetime(now.year + 1, 1, 1, tzinfo=UTC)
     seconds_remaining = (year_end - now).total_seconds()
     days_remaining_precise = seconds_remaining / 86400  # Convert seconds to days
 
@@ -255,7 +255,7 @@ def render_strava(ax: Axes):
             if activity["type"] != "Run":
                 continue
 
-            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ")
+            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
             # Calculate weekly total (last 7 days)
             if activity_date >= week_start:
@@ -282,7 +282,7 @@ def render_strava(ax: Axes):
         for activity in all_activities:
             if activity["type"] != "Run":
                 continue
-            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ")
+            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
             if activity_date >= year_start:
                 yearly_distance += activity["distance"]
 
@@ -457,7 +457,7 @@ def render_strava(ax: Axes):
             if activity["type"] != "Run":
                 continue
 
-            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").date()
+            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).date()
 
             # Only consider activities within the last 7 days
             days_ago = (today - activity_date).days
