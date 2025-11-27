@@ -295,9 +295,26 @@ def render_strava(ax: Axes):
     avg_miles_per_day = yearly_distance_mi / days_elapsed if days_elapsed > 0 else 0
     projected_yearly_mi = avg_miles_per_day * days_in_year
 
-    # Calculate x-axis bounds (round to nearest 500)
-    x_min = int(projected_yearly_mi / 500) * 500
-    x_max = (int(projected_yearly_mi / 500) + 1) * 500
+    # Calculate x-axis bounds
+    # First, calculate bounds using multiples of 500
+    x_min_500 = int(projected_yearly_mi / 500) * 500
+    x_max_500 = (int(projected_yearly_mi / 500) + 1) * 500
+
+    # Sanity check for early in the year with no mileage
+    if yearly_distance_mi == 0:
+        x_min = 0
+        x_max = 500
+    # If already past the lower 500-mile bound, use finer granularity (multiples of 100)
+    elif yearly_distance_mi >= x_min_500:
+        x_min = int(yearly_distance_mi / 100) * 100
+        x_max = int(projected_yearly_mi / 100 + 1) * 100
+        # Ensure we have at least a 100-mile range
+        if x_max <= x_min:
+            x_max = x_min + 100
+    else:
+        # Use multiples of 500 for the rest of the year
+        x_min = x_min_500
+        x_max = x_max_500
 
     # Layout parameters - everything on one line (moved higher)
     line_y = 0.65  # Higher up in the chart area
