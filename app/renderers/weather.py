@@ -276,29 +276,40 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     try:
         normals, station_info = climate_data.get_normals_for_location(lat, lon)
         if normals:
-            # Get normal high and low for each hour in the forecast
+            # Build daily normals as step functions (change at midnight)
+            # Track the date and index of each midnight transition
             normal_highs = []
             normal_lows = []
-            for dt in times:
-                day_normals = climate_data.get_normals_for_date(normals, dt)
-                if day_normals:
-                    # Convert None to NaN for matplotlib compatibility
-                    # Also ensure values are float, not string
-                    tmax = day_normals['tmax_normal']
-                    tmin = day_normals['tmin_normal']
-                    try:
-                        tmax_val = float(tmax) if tmax is not None else np.nan
-                        tmin_val = float(tmin) if tmin is not None else np.nan
-                    except (ValueError, TypeError):
-                        tmax_val = np.nan
-                        tmin_val = np.nan
-                    normal_highs.append(tmax_val)
-                    normal_lows.append(tmin_val)
-                else:
-                    normal_highs.append(np.nan)
-                    normal_lows.append(np.nan)
 
-            # Plot normal high and low as dashed lines
+            current_date = None
+            current_high = None
+            current_low = None
+
+            for i, dt in enumerate(times):
+                date_key = dt.date()
+
+                # When we hit a new day, get the normals for that day
+                if date_key != current_date:
+                    current_date = date_key
+                    day_normals = climate_data.get_normals_for_date(normals, dt)
+                    if day_normals:
+                        tmax = day_normals['tmax_normal']
+                        tmin = day_normals['tmin_normal']
+                        try:
+                            current_high = float(tmax) if tmax is not None else np.nan
+                            current_low = float(tmin) if tmin is not None else np.nan
+                        except (ValueError, TypeError):
+                            current_high = np.nan
+                            current_low = np.nan
+                    else:
+                        current_high = np.nan
+                        current_low = np.nan
+
+                # Use the current day's values for this hour
+                normal_highs.append(current_high)
+                normal_lows.append(current_low)
+
+            # Plot normal high and low as step lines (changes at midnight)
             color_normals = "#999999"
             # Check if we have any valid (non-NaN) values
             if not all(np.isnan(normal_highs)):
@@ -310,6 +321,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
                     linestyle="--",
                     alpha=0.6,
                     zorder=2,
+                    drawstyle='steps-post',
                     label="Avg High"
                 )
             if not all(np.isnan(normal_lows)):
@@ -321,6 +333,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
                     linestyle="--",
                     alpha=0.6,
                     zorder=2,
+                    drawstyle='steps-post',
                     label="Avg Low"
                 )
 
