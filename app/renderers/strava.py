@@ -476,9 +476,11 @@ def render_strava(ax: Axes):
 
             activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).date()
 
-            # Only consider activities within the last 7 days
+            # Keep activities for a full 7 days (until day 8)
+            # This means a Monday run stays visible through the following Monday
+            # and only disappears on Tuesday (unless replaced by a new Monday run)
             days_ago = (today - activity_date).days
-            if days_ago < 0 or days_ago >= 7:
+            if days_ago < 0 or days_ago > 7:
                 continue
 
             day_of_week = activity_date.weekday()  # 0=Monday, 6=Sunday
