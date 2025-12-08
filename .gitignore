@@ -59,6 +59,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Climate data (downloaded/cached)
+app/data/
+
 # Legacy Node artifacts (from old implementation)
 node_modules
 npm-debug.log

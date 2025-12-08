@@ -12,7 +12,7 @@ from astral import LocationInfo
 from astral.sun import sun
 from matplotlib.axes import Axes
 
-from app import config
+from app import climate_data, config
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +270,54 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     # Handle case where forecast ends during nighttime
     if in_night and night_start is not None:
         ax.axvspan(night_start, len(times) - 0.5, color="gray", alpha=0.15, zorder=0)
+
+    # Load and plot climate normals
+    try:
+        normals, station_info = climate_data.get_normals_for_location(lat, lon)
+        if normals:
+            # Get normal high and low for each hour in the forecast
+            normal_highs = []
+            normal_lows = []
+            for dt in times:
+                day_normals = climate_data.get_normals_for_date(normals, dt)
+                if day_normals:
+                    normal_highs.append(day_normals['tmax_normal'])
+                    normal_lows.append(day_normals['tmin_normal'])
+                else:
+                    normal_highs.append(None)
+                    normal_lows.append(None)
+
+            # Plot normal high and low as dashed lines
+            color_normals = "#999999"
+            if any(h is not None for h in normal_highs):
+                ax.plot(
+                    range(len(normal_highs)),
+                    normal_highs,
+                    linewidth=0.8,
+                    color=color_normals,
+                    linestyle="--",
+                    alpha=0.6,
+                    zorder=2,
+                    label="Avg High"
+                )
+            if any(l is not None for l in normal_lows):
+                ax.plot(
+                    range(len(normal_lows)),
+                    normal_lows,
+                    linewidth=0.8,
+                    color=color_normals,
+                    linestyle="--",
+                    alpha=0.6,
+                    zorder=2,
+                    label="Avg Low"
+                )
+
+            # Log station info
+            if station_info:
+                station_id, station_name, distance = station_info
+                logger.info(f"Using climate normals from {station_id} ({distance:.1f} km away)")
+    except Exception as e:
+        logger.warning(f"Failed to load climate normals: {e}")
 
     # Plot temperature (left y-axis) - use numeric indices for smooth curve
     color_temp = "black"
