@@ -220,28 +220,55 @@ def get_normals_for_date(normals, dt):
     return normals.get(key)
 
 
-def get_normals_for_location(lat, lon):
+def get_normals_for_location(lat, lon, max_stations_to_try=10):
     """
     Convenience function to get climate normals for a location.
+
+    Tries multiple nearby stations until one with temperature data is found.
 
     Args:
         lat: Latitude
         lon: Longitude
+        max_stations_to_try: Maximum number of stations to check (default 10)
 
     Returns:
         Tuple of (normals_dict, station_info) or (None, None) on error
         where station_info is (station_id, station_name, distance_km)
     """
-    # Find nearest station
-    station_info = find_nearest_station(lat, lon)
-    if not station_info:
+    if not INVENTORY_FILE.exists():
+        logger.error(f"Inventory file not found: {INVENTORY_FILE}")
         return None, None
 
-    station_id = station_info[0]
+    # Get all stations sorted by distance
+    stations_by_distance = []
+    with open(INVENTORY_FILE, 'r') as f:
+        for line in f:
+            station_id = line[0:11].strip()
+            try:
+                station_lat = float(line[12:20].strip())
+                station_lon = float(line[21:30].strip())
+                station_name = line[40:].strip()
+            except (ValueError, IndexError):
+                continue
 
-    # Load normals
-    normals = load_station_normals(station_id)
-    if not normals:
-        return None, None
+            distance = _haversine_distance(lat, lon, station_lat, station_lon)
+            if distance <= 100:  # Within 100km
+                stations_by_distance.append((station_id, station_name, distance))
 
-    return normals, station_info
+    # Sort by distance
+    stations_by_distance.sort(key=lambda x: x[2])
+
+    # Try stations until we find one with temperature data
+    for station_id, station_name, distance in stations_by_distance[:max_stations_to_try]:
+        normals = load_station_normals(station_id)
+        if normals:
+            # Check if this station has temperature data
+            # Look at first day's data
+            first_day_normals = next(iter(normals.values()))
+            if first_day_normals.get('tmax_normal') is not None:
+                station_info = (station_id, station_name, distance)
+                logger.info(f"Found station with temp data: {station_id} ({distance:.1f} km away)")
+                return normals, station_info
+
+    logger.warning(f"No station with temperature data found within 100km of ({lat}, {lon})")
+    return None, None
