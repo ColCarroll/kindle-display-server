@@ -7,6 +7,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
+import numpy as np
 import requests
 from astral import LocationInfo
 from astral.sun import sun
@@ -281,15 +282,19 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
             for dt in times:
                 day_normals = climate_data.get_normals_for_date(normals, dt)
                 if day_normals:
-                    normal_highs.append(day_normals['tmax_normal'])
-                    normal_lows.append(day_normals['tmin_normal'])
+                    # Convert None to NaN for matplotlib compatibility
+                    tmax = day_normals['tmax_normal']
+                    tmin = day_normals['tmin_normal']
+                    normal_highs.append(tmax if tmax is not None else np.nan)
+                    normal_lows.append(tmin if tmin is not None else np.nan)
                 else:
-                    normal_highs.append(None)
-                    normal_lows.append(None)
+                    normal_highs.append(np.nan)
+                    normal_lows.append(np.nan)
 
             # Plot normal high and low as dashed lines
             color_normals = "#999999"
-            if any(h is not None for h in normal_highs):
+            # Check if we have any valid (non-NaN) values
+            if not all(np.isnan(normal_highs)):
                 ax.plot(
                     range(len(normal_highs)),
                     normal_highs,
@@ -300,7 +305,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
                     zorder=2,
                     label="Avg High"
                 )
-            if any(l is not None for l in normal_lows):
+            if not all(np.isnan(normal_lows)):
                 ax.plot(
                     range(len(normal_lows)),
                     normal_lows,
