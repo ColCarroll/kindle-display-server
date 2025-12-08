@@ -38,6 +38,9 @@ def _haversine_distance(lat1, lon1, lat2, lon2):
     Returns:
         Distance in kilometers
     """
+    # Ensure inputs are floats (they might be strings from config)
+    lat1, lon1, lat2, lon2 = float(lat1), float(lon1), float(lat2), float(lon2)
+
     # Convert to radians
     lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
 
