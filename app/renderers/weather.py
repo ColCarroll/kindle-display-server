@@ -7,13 +7,12 @@ import logging
 import time
 from datetime import datetime, timezone
 
-import numpy as np
 import requests
 from astral import LocationInfo
 from astral.sun import sun
 from matplotlib.axes import Axes
 
-from app import climate_data, config
+from app import config
 
 logger = logging.getLogger(__name__)
 
@@ -272,78 +271,8 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     if in_night and night_start is not None:
         ax.axvspan(night_start, len(times) - 0.5, color="gray", alpha=0.15, zorder=0)
 
-    # Load and plot climate normals
-    try:
-        normals, station_info = climate_data.get_normals_for_location(lat, lon)
-        if normals:
-            # Build daily normals as step functions (change at midnight)
-            # Track the date and index of each midnight transition
-            normal_highs = []
-            normal_lows = []
-
-            current_date = None
-            current_high = None
-            current_low = None
-
-            for i, dt in enumerate(times):
-                date_key = dt.date()
-
-                # When we hit a new day, get the normals for that day
-                if date_key != current_date:
-                    current_date = date_key
-                    day_normals = climate_data.get_normals_for_date(normals, dt)
-                    if day_normals:
-                        tmax = day_normals['tmax_normal']
-                        tmin = day_normals['tmin_normal']
-                        try:
-                            current_high = float(tmax) if tmax is not None else np.nan
-                            current_low = float(tmin) if tmin is not None else np.nan
-                        except (ValueError, TypeError):
-                            current_high = np.nan
-                            current_low = np.nan
-                    else:
-                        current_high = np.nan
-                        current_low = np.nan
-
-                # Use the current day's values for this hour
-                normal_highs.append(current_high)
-                normal_lows.append(current_low)
-
-            # Plot normal high and low as step lines (changes at midnight)
-            color_normals = "#999999"
-            # Check if we have any valid (non-NaN) values
-            if not all(np.isnan(normal_highs)):
-                ax.plot(
-                    range(len(normal_highs)),
-                    normal_highs,
-                    linewidth=0.8,
-                    color=color_normals,
-                    linestyle="--",
-                    alpha=0.6,
-                    zorder=2,
-                    drawstyle='steps-post',
-                    label="Avg High"
-                )
-            if not all(np.isnan(normal_lows)):
-                ax.plot(
-                    range(len(normal_lows)),
-                    normal_lows,
-                    linewidth=0.8,
-                    color=color_normals,
-                    linestyle="--",
-                    alpha=0.6,
-                    zorder=2,
-                    drawstyle='steps-post',
-                    label="Avg Low"
-                )
-
-            # Log station info
-            if station_info:
-                station_id, station_name, distance = station_info
-                logger.info(f"Using climate normals from {station_id} ({distance:.1f} km away)")
-    except Exception as e:
-        import traceback
-        logger.error(f"Failed to load climate normals: {e}\n{traceback.format_exc()}")
+    # TODO: Add climate normals when we find hourly normal temperature data
+    # Currently NOAA only provides daily normals (one high/low per day), not hourly
 
     # Plot temperature (left y-axis) - use numeric indices for smooth curve
     color_temp = "black"
