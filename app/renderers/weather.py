@@ -283,10 +283,17 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
                 day_normals = climate_data.get_normals_for_date(normals, dt)
                 if day_normals:
                     # Convert None to NaN for matplotlib compatibility
+                    # Also ensure values are float, not string
                     tmax = day_normals['tmax_normal']
                     tmin = day_normals['tmin_normal']
-                    normal_highs.append(tmax if tmax is not None else np.nan)
-                    normal_lows.append(tmin if tmin is not None else np.nan)
+                    try:
+                        tmax_val = float(tmax) if tmax is not None else np.nan
+                        tmin_val = float(tmin) if tmin is not None else np.nan
+                    except (ValueError, TypeError):
+                        tmax_val = np.nan
+                        tmin_val = np.nan
+                    normal_highs.append(tmax_val)
+                    normal_lows.append(tmin_val)
                 else:
                     normal_highs.append(np.nan)
                     normal_lows.append(np.nan)
