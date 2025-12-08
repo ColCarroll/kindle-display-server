@@ -329,7 +329,8 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
                 station_id, station_name, distance = station_info
                 logger.info(f"Using climate normals from {station_id} ({distance:.1f} km away)")
     except Exception as e:
-        logger.warning(f"Failed to load climate normals: {e}")
+        import traceback
+        logger.error(f"Failed to load climate normals: {e}\n{traceback.format_exc()}")
 
     # Plot temperature (left y-axis) - use numeric indices for smooth curve
     color_temp = "black"
