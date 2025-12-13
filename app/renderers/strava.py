@@ -255,7 +255,9 @@ def render_strava(ax: Axes):
             if activity["type"] != "Run":
                 continue
 
-            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=UTC
+            )
 
             # Calculate weekly total (last 7 days)
             if activity_date >= week_start:
@@ -282,7 +284,9 @@ def render_strava(ax: Axes):
         for activity in all_activities:
             if activity["type"] != "Run":
                 continue
-            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=UTC
+            )
             if activity_date >= year_start:
                 yearly_distance += activity["distance"]
 
@@ -399,7 +403,7 @@ def render_strava(ax: Axes):
         miles_needed_for_x_max / days_remaining_precise if days_remaining_precise > 0 else 0
     )
 
-    # Left: x_min with miles/day needed from today
+    # Left: x_min with miles/day needed from today (floor at 0)
     ax.text(
         left_marker_x,
         line_y + 0.08,
@@ -412,7 +416,7 @@ def render_strava(ax: Axes):
     ax.text(
         left_marker_x,
         line_y - 0.08,
-        f"{miles_per_day_for_x_min:.2f}/day",
+        f"{max(0, miles_per_day_for_x_min):.2f}/day",
         ha="center",
         va="top",
         fontsize=config.FONT_SIZE_SMALL,
@@ -474,7 +478,11 @@ def render_strava(ax: Axes):
             if activity["type"] != "Run":
                 continue
 
-            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).date()
+            activity_date = (
+                datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ")
+                .replace(tzinfo=UTC)
+                .date()
+            )
 
             # Keep activities for a full 7 days (until day 8)
             # This means a Monday run stays visible through the following Monday
@@ -486,23 +494,28 @@ def render_strava(ax: Axes):
             day_of_week = activity_date.weekday()  # 0=Monday, 6=Sunday
 
             # Keep the most recent run for this day of week
-            # (activities are ordered most recent first, so first one we see is most recent)
             if day_of_week not in runs_by_day_of_week:
-                runs_by_day_of_week[day_of_week] = activity
+                runs_by_day_of_week[day_of_week] = (days_ago, activity)
             else:
-                # If same day of week, keep the longer one
-                if activity["distance"] > runs_by_day_of_week[day_of_week]["distance"]:
-                    runs_by_day_of_week[day_of_week] = activity
+                existing_days_ago, existing_activity = runs_by_day_of_week[day_of_week]
+                # If same day of week, keep the more recent one (smaller days_ago)
+                # If same date, keep the longer one
+                if days_ago < existing_days_ago or (
+                    days_ago == existing_days_ago
+                    and activity["distance"] > existing_activity["distance"]
+                ):
+                    runs_by_day_of_week[day_of_week] = (days_ago, activity)
 
     # Display 7 columns (Monday through Sunday)
     x_positions = [0.0, 0.14, 0.28, 0.42, 0.56, 0.7, 0.84]
     day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-    for day_of_week, day_name in enumerate(day_names):
+    for day_of_week, _day_name in enumerate(day_names):
         x_pos = x_positions[day_of_week]
 
         # Check if there's a run for this day of the week
-        run = runs_by_day_of_week.get(day_of_week)
+        run_entry = runs_by_day_of_week.get(day_of_week)
+        run = run_entry[1] if run_entry else None
 
         if run:
             # Calculate stats

@@ -272,7 +272,9 @@ def render_calendar(ax: Axes):
                 max_chars = int(max_width * 100)  # Much more generous
 
                 # Truncate if too long
-                display_summary = summary if len(summary) <= max_chars else summary[:max_chars-3] + "..."
+                display_summary = (
+                    summary if len(summary) <= max_chars else summary[: max_chars - 3] + "..."
+                )
 
                 ax.text(
                     event_x,
@@ -300,7 +302,7 @@ def render_calendar(ax: Axes):
     y_right = 0.95
     future_dates = sorted([d for d in events_by_day if d > tomorrow])
 
-    for i, date in enumerate(future_dates[:3]):  # Only show next 3 days
+    for date in future_dates[:3]:  # Only show next 3 days
         if y_right < 0.02:
             break
 

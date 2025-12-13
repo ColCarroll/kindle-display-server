@@ -10,8 +10,6 @@ This module provides functions to:
 import csv
 import logging
 import math
-import os
-from datetime import date
 from pathlib import Path
 
 import requests
@@ -47,7 +45,7 @@ def _haversine_distance(lat1, lon1, lat2, lon2):
     # Haversine formula
     dlat = lat2 - lat1
     dlon = lon2 - lon1
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
     c = 2 * math.asin(math.sqrt(a))
 
     # Radius of Earth in kilometers
@@ -73,9 +71,9 @@ def find_nearest_station(lat, lon, max_distance_km=100):
         return None
 
     nearest_station = None
-    min_distance = float('inf')
+    min_distance = float("inf")
 
-    with open(INVENTORY_FILE, 'r') as f:
+    with open(INVENTORY_FILE) as f:
         for line in f:
             # Parse fixed-width format
             station_id = line[0:11].strip()
@@ -95,7 +93,9 @@ def find_nearest_station(lat, lon, max_distance_km=100):
                 nearest_station = (station_id, station_name, distance)
 
     if nearest_station and min_distance <= max_distance_km:
-        logger.info(f"Found nearest station: {nearest_station[0]} ({nearest_station[1]}) at {min_distance:.1f} km")
+        logger.info(
+            f"Found nearest station: {nearest_station[0]} ({nearest_station[1]}) at {min_distance:.1f} km"
+        )
         return nearest_station
     else:
         logger.warning(f"No station found within {max_distance_km} km of ({lat}, {lon})")
@@ -128,7 +128,7 @@ def _download_station_normals(station_id):
         response.raise_for_status()
 
         # Save to cache
-        with open(cache_file, 'wb') as f:
+        with open(cache_file, "wb") as f:
             f.write(response.content)
 
         logger.info(f"Downloaded normals for {station_id}")
@@ -159,43 +159,40 @@ def load_station_normals(station_id):
     normals = {}
 
     try:
-        with open(normals_file, 'r') as f:
+        with open(normals_file) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 # Parse date (MM-DD format)
-                date_str = row.get('DATE', '')
+                date_str = row.get("DATE", "")
                 if not date_str:
                     continue
 
                 try:
-                    month, day = map(int, date_str.split('-'))
+                    month, day = map(int, date_str.split("-"))
                 except (ValueError, AttributeError):
                     continue
 
                 # Get temperature normals (already in degrees F)
-                tmax_str = row.get('DLY-TMAX-NORMAL', '')
-                tmin_str = row.get('DLY-TMIN-NORMAL', '')
+                tmax_str = row.get("DLY-TMAX-NORMAL", "")
+                tmin_str = row.get("DLY-TMIN-NORMAL", "")
 
                 # Parse temperature values
                 tmax_normal = None
                 tmin_normal = None
 
                 try:
-                    if tmax_str and tmax_str.strip() and tmax_str.strip() != '-9999.0':
+                    if tmax_str and tmax_str.strip() and tmax_str.strip() != "-9999.0":
                         tmax_normal = float(tmax_str)
                 except ValueError:
                     pass
 
                 try:
-                    if tmin_str and tmin_str.strip() and tmin_str.strip() != '-9999.0':
+                    if tmin_str and tmin_str.strip() and tmin_str.strip() != "-9999.0":
                         tmin_normal = float(tmin_str)
                 except ValueError:
                     pass
 
-                normals[(month, day)] = {
-                    'tmax_normal': tmax_normal,
-                    'tmin_normal': tmin_normal
-                }
+                normals[(month, day)] = {"tmax_normal": tmax_normal, "tmin_normal": tmin_normal}
 
         logger.info(f"Loaded {len(normals)} daily normals for {station_id}")
         return normals
@@ -244,7 +241,7 @@ def get_normals_for_location(lat, lon, max_stations_to_try=10):
 
     # Get all stations sorted by distance
     stations_by_distance = []
-    with open(INVENTORY_FILE, 'r') as f:
+    with open(INVENTORY_FILE) as f:
         for line in f:
             station_id = line[0:11].strip()
             try:
@@ -268,7 +265,7 @@ def get_normals_for_location(lat, lon, max_stations_to_try=10):
             # Check if this station has temperature data
             # Look at first day's data
             first_day_normals = next(iter(normals.values()))
-            if first_day_normals.get('tmax_normal') is not None:
+            if first_day_normals.get("tmax_normal") is not None:
                 station_info = (station_id, station_name, distance)
                 logger.info(f"Found station with temp data: {station_id} ({distance:.1f} km away)")
                 return normals, station_info

@@ -5,7 +5,7 @@ Displays current conditions and forecast - FREE, no API key required!
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import requests
 from astral import LocationInfo
@@ -36,7 +36,9 @@ def _fetch_with_retry(url, headers, max_retries=3, timeout=20):
         except requests.exceptions.RequestException as e:
             if attempt < max_retries - 1:
                 wait_time = 2**attempt
-                logger.warning(f"Request failed on attempt {attempt + 1}/{max_retries}: {e}, retrying...")
+                logger.warning(
+                    f"Request failed on attempt {attempt + 1}/{max_retries}: {e}, retrying..."
+                )
                 time.sleep(wait_time)
             else:
                 raise
@@ -104,7 +106,7 @@ def _get_sunrise_sunset(lat, lon, date):
         tuple: (sunrise datetime, sunset datetime) in UTC
     """
     location = LocationInfo(latitude=lat, longitude=lon)
-    s = sun(location.observer, date=date, tzinfo=timezone.utc)
+    s = sun(location.observer, date=date, tzinfo=UTC)
     return s["sunrise"], s["sunset"]
 
 
@@ -145,7 +147,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     gridpoint = data.get("gridpoint", {})
 
     # Get current time and round down to the most recent hour
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
     # Extract gridpoint precipitation data (time-series format)
@@ -214,9 +216,13 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
 
         # Check if snow is in the forecast (either from text or from snow data)
         forecast = period.get("shortForecast", "").lower()
-        is_snowy = any(
-            keyword in forecast for keyword in ["snow", "flurries", "sleet", "wintry", "freezing"]
-        ) or snow_amount > 0
+        is_snowy = (
+            any(
+                keyword in forecast
+                for keyword in ["snow", "flurries", "sleet", "wintry", "freezing"]
+            )
+            or snow_amount > 0
+        )
         has_snow.append(is_snowy)
 
     # If all data is stale (past), show error
@@ -311,9 +317,12 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     )
 
     # Format y-axis tick labels with " for inches
-    ax2.tick_params(axis="y", labelcolor=color_precip, labelsize=config.FONT_SIZE_BODY, labelright=True)
+    ax2.tick_params(
+        axis="y", labelcolor=color_precip, labelsize=config.FONT_SIZE_BODY, labelright=True
+    )
     # Use a formatter to add " suffix
     from matplotlib.ticker import FuncFormatter
+
     ax2.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y:.1f}"'))
 
     # Plot precipitation as vertical dotted lines with markers on top
@@ -367,8 +376,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
 
         # Find all indices for this day during daytime hours
         day_indices = [
-            i for i, dt in enumerate(times)
-            if dt.date() == date_key and 6 <= dt.hour < 20
+            i for i, dt in enumerate(times) if dt.date() == date_key and 6 <= dt.hour < 20
         ]
 
         if not day_indices:
@@ -378,7 +386,7 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
         center_idx = day_indices[len(day_indices) // 2]
 
         # Format precipitation text - use snowflake for snow, nothing for rain
-        precip_text = f"{total_precip:.1f}\"❄" if daily_is_snow[date_key] else f"{total_precip:.1f}\""
+        precip_text = f'{total_precip:.1f}"❄' if daily_is_snow[date_key] else f'{total_precip:.1f}"'
 
         # Place text on the chart
         ax.text(
