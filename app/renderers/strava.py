@@ -4,13 +4,20 @@ Displays recent activities and weekly summary
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import requests
 from matplotlib.axes import Axes
 
 from app import config
+
+# Use timezone.utc for Python 3.10 compatibility (datetime.UTC added in 3.11)
+UTC = timezone.utc  # noqa: UP017
+
+# Eastern timezone for local calculations
+EASTERN = ZoneInfo("America/New_York")
 
 logger = logging.getLogger(__name__)
 
@@ -205,20 +212,24 @@ def render_strava(ax: Axes):
     # Clear the axes
     ax.clear()
 
-    # Calculate date ranges
-    now = datetime.now(UTC)
+    # Calculate date ranges in Eastern time for accurate local day calculations
+    now_eastern = datetime.now(EASTERN)
+    now = datetime.now(UTC)  # Keep UTC for API comparisons
     week_start = now - timedelta(days=7)
-    year_start = datetime(now.year, 1, 1, tzinfo=UTC)
+    year_start_eastern = datetime(now_eastern.year, 1, 1, tzinfo=EASTERN)
+    year_start = datetime(now.year, 1, 1, tzinfo=UTC)  # UTC for API comparisons
 
-    # Calculate time elapsed and remaining in year (for pace calculation)
-    days_elapsed = (now - year_start).days + 1
+    # Calculate precise fractional days elapsed in Eastern time
+    seconds_elapsed = (now_eastern - year_start_eastern).total_seconds()
+    days_elapsed = seconds_elapsed / 86400  # Fractional days
+
     days_in_year = (
-        366 if now.year % 4 == 0 and (now.year % 100 != 0 or now.year % 400 == 0) else 365
+        366 if now_eastern.year % 4 == 0 and (now_eastern.year % 100 != 0 or now_eastern.year % 400 == 0) else 365
     )
 
-    # Calculate precise time remaining in year using seconds
-    year_end = datetime(now.year + 1, 1, 1, tzinfo=UTC)
-    seconds_remaining = (year_end - now).total_seconds()
+    # Calculate precise time remaining in year using seconds (Eastern time)
+    year_end_eastern = datetime(now_eastern.year + 1, 1, 1, tzinfo=EASTERN)
+    seconds_remaining = (year_end_eastern - now_eastern).total_seconds()
     days_remaining_precise = seconds_remaining / 86400  # Convert seconds to days
 
     # Try to use the stats endpoint first (much faster)
@@ -299,13 +310,13 @@ def render_strava(ax: Axes):
     avg_miles_per_day = yearly_distance_mi / days_elapsed if days_elapsed > 0 else 0
     projected_yearly_mi = avg_miles_per_day * days_in_year
 
-    # Calculate x-axis bounds: nearest 100-mile interval around projected total
+    # Calculate x-axis bounds: nearest 500-mile interval around projected total
     if yearly_distance_mi == 0:
         x_min = 0
-        x_max = 100
+        x_max = 500
     else:
-        x_min = int(projected_yearly_mi / 100) * 100
-        x_max = x_min + 100
+        x_min = int(projected_yearly_mi / 500) * 500
+        x_max = x_min + 500
 
     # Layout parameters - everything on one line (moved higher)
     line_y = 0.65  # Higher up in the chart area

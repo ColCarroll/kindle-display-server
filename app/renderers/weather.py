@@ -5,7 +5,7 @@ Displays current conditions and forecast - FREE, no API key required!
 
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import requests
 from astral import LocationInfo
@@ -13,6 +13,9 @@ from astral.sun import sun
 from matplotlib.axes import Axes
 
 from app import config
+
+# Use timezone.utc for Python 3.10 compatibility (datetime.UTC added in 3.11)
+UTC = timezone.utc  # noqa: UP017
 
 logger = logging.getLogger(__name__)
 
