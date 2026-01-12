@@ -4,10 +4,14 @@ Text renderer for displaying custom text, quotes, or notes
 
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from matplotlib.axes import Axes
 
 from app import config
+
+# Eastern timezone for local display
+EASTERN = ZoneInfo("America/New_York")
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +40,8 @@ def render_text(ax: Axes, text: str = ""):
             transform=ax.transAxes,
         )
 
-    # Add timestamp at the bottom
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Add timestamp at the bottom (in Eastern time)
+    timestamp = datetime.now(EASTERN).strftime("%Y-%m-%d %H:%M")
     ax.text(
         0.98,
         0.05,

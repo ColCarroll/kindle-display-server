@@ -5,11 +5,18 @@ Displays today's events and upcoming schedule
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from matplotlib.axes import Axes
 
 from app import config
+
+# Use timezone.utc for Python 3.10 compatibility (datetime.UTC added in 3.11)
+UTC = timezone.utc  # noqa: UP017
+
+# Eastern timezone for local calculations
+EASTERN = ZoneInfo("America/New_York")
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +32,7 @@ def fetch_calendar_events():
     ):
         logger.info("No calendar token file configured, using sample data")
         # Return sample events for demonstration
-        now = datetime.now()
+        now = datetime.now(EASTERN)
         return [
             {
                 "summary": "Morning workout",
@@ -65,11 +72,12 @@ def fetch_calendar_events():
         service = build("calendar", "v3", credentials=creds)
 
         # Get events from now until one month from now
-        now = datetime.now()
-        one_month_later = now + timedelta(days=30)
+        # Use UTC for API calls (Google Calendar API expects UTC timestamps)
+        now_utc = datetime.now(UTC)
+        one_month_later = now_utc + timedelta(days=30)
 
-        time_min = now.isoformat() + "Z"
-        time_max = one_month_later.isoformat() + "Z"
+        time_min = now_utc.isoformat()
+        time_max = one_month_later.isoformat()
 
         # First, get calendar names
         calendar_names = {}
@@ -147,8 +155,8 @@ def render_calendar(ax: Axes):
     # Clear the axes
     ax.clear()
 
-    # Group events by day
-    now = datetime.now()
+    # Group events by day (using Eastern time for local day boundaries)
+    now = datetime.now(EASTERN)
     today = now.date()
     tomorrow = (now + timedelta(days=1)).date()
 
@@ -156,18 +164,26 @@ def render_calendar(ax: Axes):
     for event in events:
         start_str = event.get("start")
 
-        # Parse start time
+        # Parse start time (preserving timezone info)
         if isinstance(start_str, str):
             if "T" in start_str:
-                start_dt = datetime.fromisoformat(start_str.replace("Z", ""))
+                # Replace Z with +00:00 for proper timezone parsing
+                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
             else:
+                # All-day event (date only) - treat as local Eastern time
                 start_dt = datetime.fromisoformat(start_str)
+                start_dt = start_dt.replace(tzinfo=EASTERN)
         elif isinstance(start_str, datetime):
             start_dt = start_str
         else:
             continue
 
-        event_date = start_dt.date()
+        # Convert to Eastern time for local day grouping
+        if start_dt.tzinfo is not None:
+            start_dt_eastern = start_dt.astimezone(EASTERN)
+        else:
+            start_dt_eastern = start_dt.replace(tzinfo=EASTERN)
+        event_date = start_dt_eastern.date()
         if event_date not in events_by_day:
             events_by_day[event_date] = []
         events_by_day[event_date].append(event)
@@ -220,20 +236,31 @@ def render_calendar(ax: Axes):
                 start_str = event.get("start")
                 end_str = event.get("end")
 
-                # Parse times
+                # Parse times (with timezone handling, display in Eastern time)
                 if isinstance(start_str, str):
                     if "T" in start_str:
-                        start_dt = datetime.fromisoformat(start_str.replace("Z", ""))
+                        # Parse with timezone info preserved
+                        start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
                         end_dt = (
-                            datetime.fromisoformat(end_str.replace("Z", "")) if end_str else None
+                            datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                            if end_str
+                            else None
                         )
-
+                        # Convert to Eastern for display
+                        start_dt_eastern = start_dt.astimezone(EASTERN)
                         start_time = (
-                            start_dt.strftime("%I:%M%p").lstrip("0").lower().replace(":00", "")
+                            start_dt_eastern.strftime("%I:%M%p")
+                            .lstrip("0")
+                            .lower()
+                            .replace(":00", "")
                         )
                         if end_dt:
+                            end_dt_eastern = end_dt.astimezone(EASTERN)
                             end_time = (
-                                end_dt.strftime("%I:%M%p").lstrip("0").lower().replace(":00", "")
+                                end_dt_eastern.strftime("%I:%M%p")
+                                .lstrip("0")
+                                .lower()
+                                .replace(":00", "")
                             )
                             time_str = f"{start_time}-{end_time}"
                         else:
@@ -243,8 +270,13 @@ def render_calendar(ax: Axes):
                 elif isinstance(start_str, datetime):
                     start_dt = start_str
                     end_dt = event.get("end")
+                    # Convert to Eastern if timezone-aware
+                    if start_dt.tzinfo is not None:
+                        start_dt = start_dt.astimezone(EASTERN)
                     start_time = start_dt.strftime("%I:%M%p").lstrip("0").lower().replace(":00", "")
                     if isinstance(end_dt, datetime):
+                        if end_dt.tzinfo is not None:
+                            end_dt = end_dt.astimezone(EASTERN)
                         end_time = end_dt.strftime("%I:%M%p").lstrip("0").lower().replace(":00", "")
                         time_str = f"{start_time}-{end_time}"
                     else:

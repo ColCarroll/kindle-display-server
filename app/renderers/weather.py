@@ -6,6 +6,7 @@ Displays current conditions and forecast - FREE, no API key required!
 import logging
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import requests
 from astral import LocationInfo
@@ -16,6 +17,9 @@ from app import config
 
 # Use timezone.utc for Python 3.10 compatibility (datetime.UTC added in 3.11)
 UTC = timezone.utc  # noqa: UP017
+
+# Eastern timezone for local calculations
+EASTERN = ZoneInfo("America/New_York")
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +110,11 @@ def _get_sunrise_sunset(lat, lon, date):
         date: datetime.date object
 
     Returns:
-        tuple: (sunrise datetime, sunset datetime) in UTC
+        tuple: (sunrise datetime, sunset datetime) in Eastern time
     """
     location = LocationInfo(latitude=lat, longitude=lon)
-    s = sun(location.observer, date=date, tzinfo=UTC)
+    # Use Eastern timezone for consistent local time calculations
+    s = sun(location.observer, date=date, tzinfo=EASTERN)
     return s["sunrise"], s["sunset"]
 
 
@@ -250,10 +255,12 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
 
     # Add nighttime shading using axvspan (before plotting data so it's in background)
     # Use actual sunrise/sunset times for the location
-    # Build a cache of sunrise/sunset times by date
+    # Build a cache of sunrise/sunset times by date (using Eastern time for date boundaries)
     sunrise_sunset_cache = {}
     for dt in times:
-        date_key = dt.date()
+        # Convert to Eastern time to get correct local date for sunrise/sunset
+        dt_eastern = dt.astimezone(EASTERN)
+        date_key = dt_eastern.date()
         if date_key not in sunrise_sunset_cache:
             sunrise, sunset = _get_sunrise_sunset(lat, lon, date_key)
             sunrise_sunset_cache[date_key] = (sunrise, sunset)
@@ -263,9 +270,11 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
     night_start: float | None = None
 
     for i, dt in enumerate(times):
-        sunrise, sunset = sunrise_sunset_cache[dt.date()]
+        # Use Eastern time for consistent date lookup
+        dt_eastern = dt.astimezone(EASTERN)
+        sunrise, sunset = sunrise_sunset_cache[dt_eastern.date()]
         # It's nighttime if before sunrise or after sunset
-        is_night = dt < sunrise or dt >= sunset
+        is_night = dt_eastern < sunrise or dt_eastern >= sunset
 
         if is_night and not in_night:
             # Start of night span
@@ -404,15 +413,17 @@ def render_weather(ax: Axes, lat=None, lon=None, title=None, show_xlabel=True):
             zorder=10,
         )
 
-    # Set x-axis labels to show dates at midnight
+    # Set x-axis labels to show dates at midnight (local Eastern time)
     # Find indices where date changes (at midnight)
     xtick_positions = []
     xtick_labels = []
 
     for i, dt in enumerate(times):
-        if dt.hour == 0:  # Only at midnight, skip first entry
+        # Convert to Eastern time to check for local midnight
+        dt_eastern = dt.astimezone(EASTERN)
+        if dt_eastern.hour == 0:  # Only at midnight local time
             xtick_positions.append(i)
-            xtick_labels.append(dt.strftime("%a"))
+            xtick_labels.append(dt_eastern.strftime("%a"))
 
     if show_xlabel:
         ax.set_xticks(xtick_positions)

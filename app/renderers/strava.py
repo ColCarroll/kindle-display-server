@@ -215,7 +215,7 @@ def render_strava(ax: Axes):
     # Calculate date ranges in Eastern time for accurate local day calculations
     now_eastern = datetime.now(EASTERN)
     now = datetime.now(UTC)  # Keep UTC for API comparisons
-    week_start = now - timedelta(days=7)
+    week_start_eastern = now_eastern - timedelta(days=7)
     year_start_eastern = datetime(now_eastern.year, 1, 1, tzinfo=EASTERN)
     year_start = datetime(now.year, 1, 1, tzinfo=UTC)  # UTC for API comparisons
 
@@ -266,12 +266,14 @@ def render_strava(ax: Axes):
             if activity["type"] != "Run":
                 continue
 
-            activity_date = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(
+            activity_date_utc = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(
                 tzinfo=UTC
             )
+            # Convert to Eastern for local time comparison
+            activity_date_eastern = activity_date_utc.astimezone(EASTERN)
 
-            # Calculate weekly total (last 7 days)
-            if activity_date >= week_start:
+            # Calculate weekly total (last 7 days in Eastern time)
+            if activity_date_eastern >= week_start_eastern:
                 weekly_distance += activity["distance"]
 
     # If stats endpoint didn't work, fall back to fetching all activities
@@ -466,7 +468,8 @@ def render_strava(ax: Axes):
     y_start = 0.12  # Position below the line chart
 
     # Get the most recent run for each day of the week (within last 7 days)
-    today = now.date()
+    # Use Eastern time for local day boundaries
+    today_eastern = now_eastern.date()
 
     # Group activities by day of week, keeping only the most recent (and longest) for each
     runs_by_day_of_week = {}  # Key: 0-6 (Monday-Sunday), Value: activity
@@ -476,20 +479,22 @@ def render_strava(ax: Axes):
             if activity["type"] != "Run":
                 continue
 
-            activity_date = (
+            # Convert activity time to Eastern for correct local day grouping
+            activity_date_eastern = (
                 datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ")
                 .replace(tzinfo=UTC)
+                .astimezone(EASTERN)
                 .date()
             )
 
             # Keep activities for a full 7 days (until day 8)
             # This means a Monday run stays visible through the following Monday
             # and only disappears on Tuesday (unless replaced by a new Monday run)
-            days_ago = (today - activity_date).days
+            days_ago = (today_eastern - activity_date_eastern).days
             if days_ago < 0 or days_ago > 7:
                 continue
 
-            day_of_week = activity_date.weekday()  # 0=Monday, 6=Sunday
+            day_of_week = activity_date_eastern.weekday()  # 0=Monday, 6=Sunday
 
             # Keep the most recent run for this day of week
             if day_of_week not in runs_by_day_of_week:
