@@ -12,7 +12,7 @@
 
         <!-- Temperature chart as SVG - 5 days -->
         <figure title="5-day forecast. Shaded areas are nighttime. Blue shading shows precipitation.">
-            <svg viewBox="0 0 900 270" class="weather-chart" preserveAspectRatio="xMidYMid meet" style="width: 100%; max-width: 1200px;">
+            <svg viewBox="0 0 900 450" class="weather-chart" preserveAspectRatio="xMidYMid meet" style="width: 100%; max-width: 1200px;">
                 <title>5-day forecast. Shaded areas are nighttime. Blue shading shows precipitation.</title>
                 {% set temps = location.hourly[:120] %}
                 {% if temps %}
@@ -22,8 +22,8 @@
                 {% set chart_left = 40 %}
                 {% set chart_width = 800 %}
                 {% set chart_right = chart_left + chart_width %}
-                {% set chart_top = 25 %}
-                {% set chart_height = 195 %}
+                {% set chart_top = 40 %}
+                {% set chart_height = 380 %}
                 {% set hour_width = chart_width / 120 %}
                 {% set precip_max = global_max_precip %}
                 {% set precip_scale = chart_height / precip_max %}
@@ -34,7 +34,7 @@
                 {% set grid_temp = max_temp - (i * temp_range / 4) %}
                 <line x1="{{ chart_left }}" y1="{{ grid_y }}" x2="{{ chart_right }}" y2="{{ grid_y }}"
                       stroke="#e0e0e0" stroke-width="1"/>
-                <text x="{{ chart_left - 5 }}" y="{{ grid_y + 4 }}" font-size="10" fill="#666" text-anchor="end">
+                <text x="{{ chart_left - 5 }}" y="{{ grid_y + 5 }}" font-size="14" fill="#666" text-anchor="end">
                     {{ grid_temp|int }}°
                 </text>
                 {% endfor %}
@@ -43,7 +43,7 @@
                 {% for i in range(6) %}
                 {% set precip_val = (5 - i) * precip_max / 5 %}
                 {% set grid_y = chart_top + (i * chart_height / 5) %}
-                <text x="{{ chart_right + 5 }}" y="{{ grid_y + 4 }}" font-size="10" fill="#2255aa" text-anchor="start">
+                <text x="{{ chart_right + 5 }}" y="{{ grid_y + 5 }}" font-size="14" fill="#2255aa" text-anchor="start">
                     {{ "%.1f"|format(precip_val) }}"
                 </text>
                 {% endfor %}
@@ -63,8 +63,8 @@
                 <line x1="{{ chart_left + loop.index0 * hour_width }}" y1="{{ chart_top }}"
                       x2="{{ chart_left + loop.index0 * hour_width }}" y2="{{ chart_top + chart_height }}"
                       stroke="#ccc" stroke-width="1"/>
-                <text x="{{ chart_left + loop.index0 * hour_width + 3 }}" y="{{ chart_top - 8 }}"
-                      font-size="11" fill="#333">
+                <text x="{{ chart_left + loop.index0 * hour_width + 3 }}" y="{{ chart_top - 12 }}"
+                      font-size="14" fill="#333">
                     {{ hour.time_eastern[5:10] }}
                 </text>
                 {% endif %}
@@ -82,7 +82,7 @@
                     points="{% for hour in temps %}{{ chart_left + loop.index0 * hour_width + hour_width/2 }},{{ chart_top + chart_height - hour.precip_amount * precip_scale }} {% endfor %}"
                     fill="none"
                     stroke="#2255aa"
-                    stroke-width="2"/>
+                    stroke-width="2.5"/>
 
                 <!-- Daily precipitation labels -->
                 {% set current_date = none %}
@@ -93,8 +93,8 @@
                 {% if hour_date != current_date %}
                     {% if current_date and day_precip_total >= 0.05 %}
                     {% set label_x = chart_left + (day_start_idx + (loop.index0 - day_start_idx) / 2) * hour_width %}
-                    <text x="{{ label_x }}" y="{{ chart_top + chart_height - 8 }}"
-                          font-size="11" fill="#2255aa" text-anchor="middle" font-weight="bold">
+                    <text x="{{ label_x }}" y="{{ chart_top + chart_height - 12 }}"
+                          font-size="14" fill="#2255aa" text-anchor="middle" font-weight="bold">
                         {{ "%.1f"|format(day_precip_total) }}"
                     </text>
                     {% endif %}
@@ -111,7 +111,7 @@
                     points="{% for hour in temps %}{{ chart_left + loop.index0 * hour_width + hour_width/2 }},{{ chart_top + chart_height - ((hour.temp - min_temp) / temp_range * chart_height) }} {% endfor %}"
                     fill="none"
                     stroke="#333"
-                    stroke-width="2"/>
+                    stroke-width="2.5"/>
 
                 {% endif %}
             </svg>
