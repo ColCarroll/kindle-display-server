@@ -2,12 +2,8 @@
 <div class="error-message">{{ error }}</div>
 {% else %}
 <div class="strava-section">
-    <!-- Stats summary -->
+    <!-- Mileage stats -->
     <div class="strava-stats">
-        <div class="strava-stat">
-            <div class="strava-stat-value">{{ data.weekly_distance_mi }}</div>
-            <div class="strava-stat-label">miles (7 days)</div>
-        </div>
         <div class="strava-stat">
             <div class="strava-stat-value">{{ data.yearly_distance_mi }}</div>
             <div class="strava-stat-label">miles YTD</div>
@@ -15,10 +11,6 @@
         <div class="strava-stat">
             <div class="strava-stat-value">{{ data.avg_miles_per_day }}</div>
             <div class="strava-stat-label">mi/day avg</div>
-        </div>
-        <div class="strava-stat">
-            <div class="strava-stat-value">{{ "{:,}".format(data.yearly_elevation_ft|int) }}</div>
-            <div class="strava-stat-label">ft YTD</div>
         </div>
     </div>
 
@@ -109,6 +101,18 @@
     </div>
     {% endif %}
 
+    <!-- Elevation stats -->
+    <div class="strava-stats">
+        <div class="strava-stat">
+            <div class="strava-stat-value">{{ "{:,}".format(data.yearly_elevation_ft|int) }}</div>
+            <div class="strava-stat-label">ft YTD</div>
+        </div>
+        <div class="strava-stat">
+            <div class="strava-stat-value">{{ "{:,}".format(data.avg_elevation_per_day|int) }}</div>
+            <div class="strava-stat-label">ft/day avg</div>
+        </div>
+    </div>
+
     <!-- Detrended elevation chart -->
     {% if data.detrended_elevation_data %}
     <div class="detrended-chart-container">
@@ -183,6 +187,14 @@
         </svg>
     </div>
     {% endif %}
+
+    <!-- Weekly stats -->
+    <div class="strava-stats">
+        <div class="strava-stat">
+            <div class="strava-stat-value">{{ data.weekly_distance_mi }}</div>
+            <div class="strava-stat-label">miles (7 days)</div>
+        </div>
+    </div>
 
     <!-- Week grid (Monday-Sunday) -->
     <div class="runs-week-grid">
