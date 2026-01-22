@@ -213,6 +213,7 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
             "time": start_time.isoformat(),
             "time_eastern": start_eastern.isoformat(),
             "hour": start_eastern.hour,
+            "day_name": start_eastern.strftime("%a"),  # "Fri", "Sat", etc.
             "temp": period["temperature"],
             "precip_prob": period.get("probabilityOfPrecipitation", {}).get("value", 0) or 0,
             "precip_amount": precip_amount,
