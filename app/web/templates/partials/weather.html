@@ -81,6 +81,36 @@
                 {% endif %}
                 {% endfor %}
 
+                <!-- Daily precipitation amount labels -->
+                {% set ns = namespace(current_date=none, day_precip_total=0, day_start_idx=0, day_is_snow=false) %}
+                {% for hour in temps %}
+                {% set hour_date = hour.time_eastern[:10] %}
+                {% if hour_date != ns.current_date %}
+                    {% if ns.current_date and ns.day_precip_total >= 0.05 %}
+                    {% set label_x = chart_left + (ns.day_start_idx + (loop.index0 - ns.day_start_idx) / 2) * hour_width %}
+                    <text x="{{ label_x }}" y="{{ chart_top + chart_height - 15 }}"
+                          font-size="16" fill="{% if ns.day_is_snow %}#338899{% else %}#2255aa{% endif %}" text-anchor="middle" font-weight="bold">
+                        {{ "%.1f"|format(ns.day_precip_total) }}"{% if ns.day_is_snow %}❄{% endif %}
+                    </text>
+                    {% endif %}
+                    {% set ns.current_date = hour_date %}
+                    {% set ns.day_precip_total = hour.precip_amount %}
+                    {% set ns.day_start_idx = loop.index0 %}
+                    {% set ns.day_is_snow = hour.is_snow %}
+                {% else %}
+                    {% set ns.day_precip_total = ns.day_precip_total + hour.precip_amount %}
+                    {% if hour.is_snow %}{% set ns.day_is_snow = true %}{% endif %}
+                {% endif %}
+                {% endfor %}
+                <!-- Final day label -->
+                {% if ns.day_precip_total >= 0.05 %}
+                {% set label_x = chart_left + (ns.day_start_idx + (temps|length - ns.day_start_idx) / 2) * hour_width %}
+                <text x="{{ label_x }}" y="{{ chart_top + chart_height - 15 }}"
+                      font-size="16" fill="{% if ns.day_is_snow %}#338899{% else %}#2255aa{% endif %}" text-anchor="middle" font-weight="bold">
+                    {{ "%.1f"|format(ns.day_precip_total) }}"{% if ns.day_is_snow %}❄{% endif %}
+                </text>
+                {% endif %}
+
                 <!-- Temperature line -->
                 <polyline
                     points="{% for hour in temps %}{{ chart_left + loop.index0 * hour_width + hour_width/2 }},{{ chart_top + chart_height - ((hour.temp - min_temp) / temp_range * chart_height) }} {% endfor %}"
