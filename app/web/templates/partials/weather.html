@@ -11,9 +11,9 @@
         </p>
 
         <!-- Temperature chart as SVG - 5 days -->
-        <div class="weather-chart-container" title="5-day forecast. Shaded areas are nighttime. Blue shading shows precipitation.">
+        <div class="weather-chart-container" title="5-day forecast. Shaded areas are nighttime. Blue/cyan bars show precipitation probability (rain/snow).">
             <svg viewBox="0 0 900 450" class="weather-chart" preserveAspectRatio="xMidYMid meet">
-                <title>5-day forecast. Shaded areas are nighttime. Blue shading shows precipitation.</title>
+                <title>5-day forecast. Shaded areas are nighttime. Blue/cyan bars show precipitation probability (rain/snow).</title>
                 {% set temps = location.hourly[:120] %}
                 {% if temps %}
                 {% set min_temp = global_min_temp %}
@@ -25,8 +25,6 @@
                 {% set chart_top = 40 %}
                 {% set chart_height = 380 %}
                 {% set hour_width = chart_width / 120 %}
-                {% set precip_max = global_max_precip %}
-                {% set precip_scale = chart_height / precip_max %}
 
                 <!-- Horizontal grid lines (temperature on left) -->
                 {% for i in range(5) %}
@@ -39,12 +37,12 @@
                 </text>
                 {% endfor %}
 
-                <!-- Right y-axis labels (precipitation in inches) -->
-                {% for i in range(6) %}
-                {% set precip_val = (5 - i) * precip_max / 5 %}
-                {% set grid_y = chart_top + (i * chart_height / 5) %}
+                <!-- Right y-axis labels (precipitation probability %) -->
+                {% for i in range(5) %}
+                {% set prob_val = (4 - i) * 25 %}
+                {% set grid_y = chart_top + (i * chart_height / 4) %}
                 <text x="{{ chart_right + 5 }}" y="{{ grid_y + 5 }}" font-size="18" fill="#2255aa" text-anchor="start">
-                    {{ "%.1f"|format(precip_val) }}"
+                    {{ prob_val }}%
                 </text>
                 {% endfor %}
 
@@ -70,47 +68,18 @@
                 {% endif %}
                 {% endfor %}
 
-                <!-- Precipitation bars (rain=blue, snow=cyan) -->
+                <!-- Precipitation probability bars (rain=blue, snow=cyan) -->
                 {% for hour in temps %}
-                {% if hour.precip_amount > 0 %}
+                {% if hour.precip_prob > 0 %}
+                {% set bar_height = hour.precip_prob / 100 * chart_height %}
                 <rect x="{{ chart_left + loop.index0 * hour_width }}"
-                      y="{{ chart_top + chart_height - hour.precip_amount * precip_scale }}"
+                      y="{{ chart_top + chart_height - bar_height }}"
                       width="{{ hour_width }}"
-                      height="{{ hour.precip_amount * precip_scale }}"
+                      height="{{ bar_height }}"
                       fill="{% if hour.is_snow %}#66ccee{% else %}#3377bb{% endif %}"
-                      fill-opacity="0.6"/>
+                      fill-opacity="0.5"/>
                 {% endif %}
                 {% endfor %}
-
-                <!-- Daily precipitation labels -->
-                {% set ns = namespace(current_date=none, day_precip_total=0, day_start_idx=0, day_is_snow=false) %}
-                {% for hour in temps %}
-                {% set hour_date = hour.time_eastern[:10] %}
-                {% if hour_date != ns.current_date %}
-                    {% if ns.current_date and ns.day_precip_total >= 0.05 %}
-                    {% set label_x = chart_left + (ns.day_start_idx + (loop.index0 - ns.day_start_idx) / 2) * hour_width %}
-                    <text x="{{ label_x }}" y="{{ chart_top + chart_height - 15 }}"
-                          font-size="18" fill="{% if ns.day_is_snow %}#338899{% else %}#2255aa{% endif %}" text-anchor="middle" font-weight="bold">
-                        {{ "%.1f"|format(ns.day_precip_total) }}"{% if ns.day_is_snow %}❄{% endif %}
-                    </text>
-                    {% endif %}
-                    {% set ns.current_date = hour_date %}
-                    {% set ns.day_precip_total = hour.precip_amount %}
-                    {% set ns.day_start_idx = loop.index0 %}
-                    {% set ns.day_is_snow = hour.is_snow %}
-                {% else %}
-                    {% set ns.day_precip_total = ns.day_precip_total + hour.precip_amount %}
-                    {% if hour.is_snow %}{% set ns.day_is_snow = true %}{% endif %}
-                {% endif %}
-                {% endfor %}
-                <!-- Final day label -->
-                {% if ns.day_precip_total >= 0.05 %}
-                {% set label_x = chart_left + (ns.day_start_idx + (temps|length - ns.day_start_idx) / 2) * hour_width %}
-                <text x="{{ label_x }}" y="{{ chart_top + chart_height - 15 }}"
-                      font-size="18" fill="{% if ns.day_is_snow %}#338899{% else %}#2255aa{% endif %}" text-anchor="middle" font-weight="bold">
-                    {{ "%.1f"|format(ns.day_precip_total) }}"{% if ns.day_is_snow %}❄{% endif %}
-                </text>
-                {% endif %}
 
                 <!-- Temperature line -->
                 <polyline
