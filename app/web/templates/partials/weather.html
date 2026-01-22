@@ -4,7 +4,16 @@
 <div class="weather-section">
     {% for location in locations %}
     <div class="weather-location">
-        <h3>{{ location.city }}</h3>
+        <div class="weather-location-header">
+            <h3>{{ location.city }}</h3>
+            {% if location.location_id %}
+            <button class="delete-location-btn"
+                    hx-delete="/weather/locations/{{ location.location_id }}"
+                    hx-confirm="Remove {{ location.city }}?"
+                    hx-swap="none"
+                    title="Remove location">×</button>
+            {% endif %}
+        </div>
         <p class="weather-current">
             <span class="temp-high">{{ location.current_temp }}°F</span>
             <span class="weather-description">{{ location.current_desc }}</span>
@@ -124,7 +133,26 @@
     </div>
     {% if not loop.last %}<hr>{% endif %}
     {% endfor %}
+
+    <!-- Add location form -->
+    <div class="add-location-form">
+        <form hx-post="/weather/locations"
+              hx-swap="none"
+              hx-target="#add-location-error">
+            <input type="text" name="name" placeholder="Name (e.g. Home)" required>
+            <input type="text" name="zip_code" placeholder="Zip code" required pattern="[0-9]{5}" maxlength="5">
+            <button type="submit">Add Location</button>
+        </form>
+        <div id="add-location-error"></div>
+    </div>
 </div>
+
+<!-- Refresh weather when locations change -->
+<script>
+document.body.addEventListener('locationsChanged', function() {
+    htmx.ajax('GET', '/partials/weather', {target: '[hx-get="/partials/weather"]', swap: 'outerHTML'});
+});
+</script>
 
 <style>
 .weather-section,
@@ -155,6 +183,78 @@
 .weather-chart {
     width: 100% !important;
     height: auto;
+}
+
+.weather-location-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.weather-location-header h3 {
+    margin: 0;
+}
+
+.delete-location-btn {
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0 0.3rem;
+    line-height: 1;
+}
+
+.delete-location-btn:hover {
+    color: #c00;
+}
+
+.add-location-form {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #ddd;
+}
+
+.add-location-form form {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.add-location-form input {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 0.9rem;
+}
+
+.add-location-form input[name="name"] {
+    width: 120px;
+}
+
+.add-location-form input[name="zip_code"] {
+    width: 80px;
+}
+
+.add-location-form button {
+    padding: 0.4rem 0.8rem;
+    background: #333;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.add-location-form button:hover {
+    background: #555;
+}
+
+.error-message {
+    color: #c00;
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
 }
 </style>
 {% endif %}
