@@ -34,7 +34,7 @@
                 {% set grid_temp = max_temp - (i * temp_range / 4) %}
                 <line x1="{{ chart_left }}" y1="{{ grid_y }}" x2="{{ chart_right }}" y2="{{ grid_y }}"
                       stroke="#e0e0e0" stroke-width="1"/>
-                <text x="{{ chart_left - 5 }}" y="{{ grid_y + 5 }}" font-size="14" fill="#666" text-anchor="end">
+                <text x="{{ chart_left - 5 }}" y="{{ grid_y + 5 }}" font-size="18" fill="#666" text-anchor="end">
                     {{ grid_temp|int }}°
                 </text>
                 {% endfor %}
@@ -43,7 +43,7 @@
                 {% for i in range(6) %}
                 {% set precip_val = (5 - i) * precip_max / 5 %}
                 {% set grid_y = chart_top + (i * chart_height / 5) %}
-                <text x="{{ chart_right + 5 }}" y="{{ grid_y + 5 }}" font-size="14" fill="#2255aa" text-anchor="start">
+                <text x="{{ chart_right + 5 }}" y="{{ grid_y + 5 }}" font-size="18" fill="#2255aa" text-anchor="start">
                     {{ "%.1f"|format(precip_val) }}"
                 </text>
                 {% endfor %}
@@ -64,7 +64,7 @@
                       x2="{{ chart_left + loop.index0 * hour_width }}" y2="{{ chart_top + chart_height }}"
                       stroke="#ccc" stroke-width="1"/>
                 <text x="{{ chart_left + loop.index0 * hour_width + 3 }}" y="{{ chart_top - 12 }}"
-                      font-size="14" fill="#333">
+                      font-size="18" fill="#333">
                     {{ hour.time_eastern[5:10] }}
                 </text>
                 {% endif %}
@@ -94,7 +94,7 @@
                     {% if current_date and day_precip_total >= 0.05 %}
                     {% set label_x = chart_left + (day_start_idx + (loop.index0 - day_start_idx) / 2) * hour_width %}
                     <text x="{{ label_x }}" y="{{ chart_top + chart_height - 12 }}"
-                          font-size="14" fill="#2255aa" text-anchor="middle" font-weight="bold">
+                          font-size="18" fill="#2255aa" text-anchor="middle" font-weight="bold">
                         {{ "%.1f"|format(day_precip_total) }}"
                     </text>
                     {% endif %}
