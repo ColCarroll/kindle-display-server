@@ -56,11 +56,18 @@
 
 <style>
 .calendar-grid {
-    width: 900px;
-    max-width: 100%;
+    width: 100%;
+    max-width: 900px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 2rem;
+}
+
+@media (max-width: 600px) {
+    .calendar-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
 }
 </style>
 {% endif %}
