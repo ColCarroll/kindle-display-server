@@ -34,10 +34,10 @@
         </p>
     </div>
 
-    <!-- Last 7 days grid -->
+    <!-- Week grid (Monday-Sunday) -->
     <div class="runs-week-grid">
         {% for day in data.last_7_days %}
-        <div class="run-day {% if day.run %}has-run{% else %}rest-day{% endif %}">
+        <div class="run-day {% if day.run %}has-run{% else %}rest-day{% endif %}{% if day.is_today %} today{% endif %}{% if day.is_future %} future{% endif %}">
             <div class="run-day-header">{{ day.day_name }}</div>
             {% if day.run %}
             <a href="{{ day.run.strava_url }}" target="_blank" rel="noopener" class="run-day-content">
@@ -81,7 +81,15 @@
 
 .run-day.rest-day {
     background: #f5f5f5;
-    opacity: 0.7;
+}
+
+.run-day.today {
+    border: 3px solid #333;
+    box-shadow: 0 0 0 1px #333;
+}
+
+.run-day.future {
+    opacity: 0.4;
 }
 
 .run-day-header {
@@ -153,6 +161,10 @@
     }
     .run-day.rest-day {
         background: #1a1a1a;
+    }
+    .run-day.today {
+        border-color: #ddd;
+        box-shadow: 0 0 0 1px #ddd;
     }
     .run-day-header {
         color: #ddd;

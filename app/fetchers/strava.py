@@ -293,13 +293,19 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
     weekly_distance = 0
     today_eastern = now_eastern.date()
 
-    # Initialize last 7 days (index 0 = 6 days ago, index 6 = today)
+    # Initialize week (Monday-Sunday), with today highlighted
+    # Find the Monday of the current week
+    days_since_monday = today_eastern.weekday()  # 0=Monday, 6=Sunday
+    monday = today_eastern - timedelta(days=days_since_monday)
+
     last_7_days = []
-    for days_ago in range(6, -1, -1):  # 6, 5, 4, 3, 2, 1, 0
-        day_date = today_eastern - timedelta(days=days_ago)
+    for i in range(7):  # Monday through Sunday
+        day_date = monday + timedelta(days=i)
         last_7_days.append({
             "date": day_date.isoformat(),
             "day_name": day_date.strftime("%a"),  # "Mon", "Tue", etc.
+            "is_today": day_date == today_eastern,
+            "is_future": day_date > today_eastern,
             "run": None,  # Will be filled if there's a run
         })
 
