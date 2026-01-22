@@ -1,0 +1,62 @@
+{% if error %}
+<div class="error-message">{{ error }}</div>
+{% else %}
+<div class="strava-section">
+    <!-- Stats summary -->
+    <div class="strava-stats">
+        <div class="strava-stat">
+            <div class="strava-stat-value">{{ data.weekly_distance_mi }}</div>
+            <div class="strava-stat-label">miles (7 days)</div>
+        </div>
+        <div class="strava-stat">
+            <div class="strava-stat-value">{{ data.yearly_distance_mi }}</div>
+            <div class="strava-stat-label">miles YTD</div>
+        </div>
+        <div class="strava-stat">
+            <div class="strava-stat-value">{{ data.avg_miles_per_day }}</div>
+            <div class="strava-stat-label">mi/day avg</div>
+        </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="progress-bar-container">
+        <p style="margin-bottom: 0.5rem;">
+            <strong>{{ data.milestone_low }}</strong> mi
+            <span style="float: right;"><strong>{{ data.milestone_high }}</strong> mi</span>
+        </p>
+        <div class="progress-bar">
+            <div class="progress-bar-fill" style="width: {{ data.progress_percent }}%;"></div>
+            <div class="progress-bar-label">{{ data.projected_yearly_mi|int }} mi projected</div>
+        </div>
+        <p style="margin-top: 0.3rem; font-size: 0.85rem; color: #666;">
+            {{ data.miles_per_day_low }} mi/day to reach {{ data.milestone_low }} |
+            {{ data.miles_per_day_high }} mi/day to reach {{ data.milestone_high }}
+        </p>
+    </div>
+
+    <!-- Recent runs -->
+    {% if data.recent_runs %}
+    <h3>Recent Runs</h3>
+    <div class="runs-grid">
+        {% for run in data.recent_runs %}
+        <div class="run-card">
+            <div class="run-card-header">
+                {{ run.day_of_week }} - {{ run.distance_mi }} mi
+            </div>
+            <div class="run-card-stats">
+                {{ run.pace }} | {{ run.elevation_ft|int }} ft
+            </div>
+            <div style="margin-top: 0.5rem;">
+                <a href="{{ run.strava_url }}" target="_blank" rel="noopener"
+                   style="font-size: 0.85rem; color: #fc4c02;">
+                    View on Strava
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: #666; font-style: italic;">No recent runs</p>
+    {% endif %}
+</div>
+{% endif %}

@@ -59,3 +59,17 @@ CUSTOM_TEXT = os.getenv("CUSTOM_TEXT", "")
 # Server settings
 PORT = int(os.getenv("PORT", "8000"))
 HOST = os.getenv("HOST", "0.0.0.0")
+
+# Web application authentication
+ALLOWED_EMAIL = os.getenv("ALLOWED_EMAIL", "")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "change-me-in-production")
+WEB_BASE_URL = os.getenv("WEB_BASE_URL", "http://localhost:8000")
+
+# Cache settings
+CACHE_DIR = os.path.join(os.path.dirname(__file__), "data")
+WEATHER_CACHE_TTL = 15 * 60  # 15 minutes
+CALENDAR_CACHE_TTL = 5 * 60  # 5 minutes
+STRAVA_CACHE_TTL = 10 * 60  # 10 minutes
+STRAVA_STATS_CACHE_TTL = 60 * 60  # 1 hour

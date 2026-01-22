@@ -1,0 +1,56 @@
+{% if error %}
+<div class="error-message">{{ error }}</div>
+{% else %}
+<div class="calendar-grid">
+    <!-- Left column: Today and Tomorrow -->
+    <div>
+        <div class="calendar-day">
+            <div class="calendar-day-header">Today - {{ data.today_label }}</div>
+            {% if data.today %}
+            {% for event in data.today %}
+            <div class="calendar-event {% if event.is_all_day %}all-day-event{% endif %}">
+                <span class="calendar-event-time">{{ event.time }}</span>
+                <span class="calendar-event-title">{{ event.summary }}</span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="calendar-event" style="color: #666; font-style: italic;">No events</div>
+            {% endif %}
+        </div>
+
+        <div class="calendar-day">
+            <div class="calendar-day-header">Tomorrow - {{ data.tomorrow_label }}</div>
+            {% if data.tomorrow %}
+            {% for event in data.tomorrow %}
+            <div class="calendar-event {% if event.is_all_day %}all-day-event{% endif %}">
+                <span class="calendar-event-time">{{ event.time }}</span>
+                <span class="calendar-event-title">{{ event.summary }}</span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="calendar-event" style="color: #666; font-style: italic;">No events</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Right column: Future days -->
+    <div>
+        {% for date, day_data in data.future.items() %}
+        <div class="calendar-day">
+            <div class="calendar-day-header">{{ day_data.label }}</div>
+            {% for event in day_data.events %}
+            <div class="calendar-event {% if event.is_all_day %}all-day-event{% endif %}">
+                <span class="calendar-event-time">{{ event.time }}</span>
+                <span class="calendar-event-title">{{ event.summary }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="calendar-day">
+            <div class="calendar-day-header">Upcoming</div>
+            <div class="calendar-event" style="color: #666; font-style: italic;">No upcoming events</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

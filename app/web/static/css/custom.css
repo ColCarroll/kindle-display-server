@@ -1,0 +1,256 @@
+/* Custom styles for Kindle Dashboard */
+
+/* Loading indicators */
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 200ms ease-in;
+}
+.htmx-request .htmx-indicator {
+    opacity: 1;
+}
+.htmx-request.htmx-indicator {
+    opacity: 1;
+}
+
+/* Section styling */
+.dashboard-section {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #ccc;
+}
+
+.dashboard-section:last-child {
+    border-bottom: none;
+}
+
+/* Weather charts */
+.weather-chart {
+    width: 100%;
+    max-width: 600px;
+    height: auto;
+}
+
+.weather-location {
+    margin-bottom: 1.5rem;
+}
+
+.weather-current {
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+}
+
+.weather-description {
+    color: #666;
+    font-style: italic;
+}
+
+/* Temperature display */
+.temp-high {
+    color: #c44;
+}
+
+.temp-low {
+    color: #44c;
+}
+
+/* Precipitation */
+.precip-bar {
+    fill: #6699cc;
+    opacity: 0.7;
+}
+
+.snow-marker {
+    fill: #99ccff;
+}
+
+/* Calendar styles */
+.calendar-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+@media (max-width: 760px) {
+    .calendar-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.calendar-day {
+    margin-bottom: 1rem;
+}
+
+.calendar-day-header {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 0.25rem;
+}
+
+.calendar-event {
+    margin-bottom: 0.5rem;
+    padding-left: 0.5rem;
+}
+
+.calendar-event-time {
+    font-size: 0.9rem;
+    color: #666;
+    min-width: 5rem;
+    display: inline-block;
+}
+
+.calendar-event-title {
+    margin-left: 0.5rem;
+}
+
+.all-day-event {
+    font-style: italic;
+}
+
+/* Strava styles */
+.strava-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+.strava-stat {
+    text-align: center;
+}
+
+.strava-stat-value {
+    font-size: 1.8rem;
+    font-weight: bold;
+}
+
+.strava-stat-label {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+/* Progress bar */
+.progress-bar-container {
+    width: 100%;
+    max-width: 500px;
+    margin: 1rem 0;
+}
+
+.progress-bar {
+    background: #eee;
+    height: 24px;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar-fill {
+    background: linear-gradient(90deg, #fc4c02, #ff6b35);
+    height: 100%;
+    transition: width 0.5s ease;
+}
+
+.progress-bar-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.85rem;
+    font-weight: bold;
+    color: #333;
+    text-shadow: 0 0 2px white;
+}
+
+/* Run cards */
+.runs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.run-card {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 0.75rem;
+    background: #fafafa;
+}
+
+.run-card-header {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+.run-card-stats {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.run-map {
+    width: 100%;
+    height: 100px;
+    margin-top: 0.5rem;
+    background: #f0f0f0;
+    border-radius: 2px;
+}
+
+/* Login page */
+.login-container {
+    max-width: 400px;
+    margin: 4rem auto;
+    text-align: center;
+}
+
+.login-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: #4285f4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.login-button:hover {
+    background: #357abd;
+}
+
+/* User info */
+.user-info {
+    text-align: right;
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 1rem;
+}
+
+.logout-link {
+    color: #666;
+    text-decoration: underline;
+}
+
+/* Error states */
+.error-message {
+    color: #c44;
+    padding: 1rem;
+    background: #fee;
+    border: 1px solid #fcc;
+    border-radius: 4px;
+}
+
+/* Loading spinner */
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #ccc;
+    border-top-color: #333;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

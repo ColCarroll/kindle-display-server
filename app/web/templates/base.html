@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/tufte.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/custom.css') }}">
+    <script src="{{ url_for('static', path='js/htmx.min.js') }}"></script>
+</head>
+<body>
+    <article>
+        {% if user_email %}
+        <div class="user-info">
+            {{ user_name or user_email }}
+            <a href="/logout" class="logout-link">Logout</a>
+        </div>
+        {% endif %}
+
+        <h1>{% block header %}Personal Dashboard{% endblock %}</h1>
+
+        {% block content %}{% endblock %}
+    </article>
+</body>
+</html>

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block header %}Dashboard{% endblock %}
+
+{% block content %}
+<section class="dashboard-section">
+    <h2>Weather</h2>
+    <div hx-get="/partials/weather"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <span class="loading"></span> Loading weather...
+    </div>
+</section>
+
+<section class="dashboard-section">
+    <h2>Calendar</h2>
+    <div hx-get="/partials/calendar"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <span class="loading"></span> Loading calendar...
+    </div>
+</section>
+
+<section class="dashboard-section">
+    <h2>Running</h2>
+    <div hx-get="/partials/strava"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <span class="loading"></span> Loading running stats...
+    </div>
+</section>
+{% endblock %}
