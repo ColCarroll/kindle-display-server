@@ -10,6 +10,92 @@ import requests
 from app import config
 from app.cache import sqlite as cache
 
+
+def decode_polyline(polyline_str: str) -> list[tuple[float, float]]:
+    """Decode a Google encoded polyline string into a list of (lat, lng) tuples.
+
+    Based on the algorithm at:
+    https://developers.google.com/maps/documentation/utilities/polylinealgorithm
+    """
+    if not polyline_str:
+        return []
+
+    index = 0
+    lat = 0
+    lng = 0
+    coordinates = []
+
+    while index < len(polyline_str):
+        # Decode latitude
+        shift = 0
+        result = 0
+        while True:
+            b = ord(polyline_str[index]) - 63
+            index += 1
+            result |= (b & 0x1F) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlat = ~(result >> 1) if result & 1 else result >> 1
+        lat += dlat
+
+        # Decode longitude
+        shift = 0
+        result = 0
+        while True:
+            b = ord(polyline_str[index]) - 63
+            index += 1
+            result |= (b & 0x1F) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlng = ~(result >> 1) if result & 1 else result >> 1
+        lng += dlng
+
+        coordinates.append((lat / 1e5, lng / 1e5))
+
+    return coordinates
+
+
+def polyline_to_svg_path(polyline_str: str, width: int = 100, height: int = 100) -> str:
+    """Convert a polyline to an SVG path string, normalized to fit in the given dimensions."""
+    coords = decode_polyline(polyline_str)
+    if not coords or len(coords) < 2:
+        return ""
+
+    lats = [c[0] for c in coords]
+    lngs = [c[1] for c in coords]
+
+    min_lat, max_lat = min(lats), max(lats)
+    min_lng, max_lng = min(lngs), max(lngs)
+
+    lat_range = max_lat - min_lat or 0.0001
+    lng_range = max_lng - min_lng or 0.0001
+
+    # Use the larger range to maintain aspect ratio
+    max_range = max(lat_range, lng_range)
+
+    # Normalize coordinates to SVG space with padding
+    padding = 5
+    usable_width = width - 2 * padding
+    usable_height = height - 2 * padding
+
+    svg_points = []
+    for lat, lng in coords:
+        # Normalize to 0-1 range using the larger dimension for aspect ratio
+        x = (lng - min_lng) / max_range
+        y = (max_lat - lat) / max_range  # Flip y since SVG y increases downward
+
+        # Scale to usable area and add padding
+        svg_x = padding + x * usable_width
+        svg_y = padding + y * usable_height
+        svg_points.append(f"{svg_x:.1f},{svg_y:.1f}")
+
+    if not svg_points:
+        return ""
+
+    return "M" + " L".join(svg_points)
+
 # Use timezone.utc for Python 3.10 compatibility (datetime.UTC added in 3.11)
 UTC = timezone.utc  # noqa: UP017
 EASTERN = ZoneInfo("America/New_York")
@@ -171,7 +257,7 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
             - avg_miles_per_day: Average miles per day this year
             - days_elapsed: Days elapsed this year
             - days_remaining: Days remaining this year
-            - recent_runs: List of recent runs with stats
+            - last_7_days: List of last 7 days with run data (or None for rest days)
     """
     now_eastern = datetime.now(EASTERN)
     year_start_eastern = datetime(now_eastern.year, 1, 1, tzinfo=EASTERN)
@@ -203,10 +289,22 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
     if not activities and yearly_distance_mi is None:
         return None
 
-    # Calculate weekly total and gather recent runs
+    # Calculate weekly total and group runs by day
     weekly_distance = 0
-    recent_runs = []
     today_eastern = now_eastern.date()
+
+    # Initialize last 7 days (index 0 = 6 days ago, index 6 = today)
+    last_7_days = []
+    for days_ago in range(6, -1, -1):  # 6, 5, 4, 3, 2, 1, 0
+        day_date = today_eastern - timedelta(days=days_ago)
+        last_7_days.append({
+            "date": day_date.isoformat(),
+            "day_name": day_date.strftime("%a"),  # "Mon", "Tue", etc.
+            "run": None,  # Will be filled if there's a run
+        })
+
+    # Group runs by date (keep best run per day)
+    runs_by_date = {}
 
     if activities:
         for activity in activities:
@@ -222,9 +320,10 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
             if activity_date_eastern >= week_start_eastern:
                 weekly_distance += activity["distance"]
 
-            # Recent runs (last 7 days)
+            # Check if in last 7 days
             days_ago = (today_eastern - activity_date_eastern.date()).days
-            if 0 <= days_ago <= 7:
+            if 0 <= days_ago <= 6:
+                date_key = activity_date_eastern.date().isoformat()
                 distance_mi = activity["distance"] * 0.000621371
                 elevation_ft = activity.get("total_elevation_gain", 0) * 3.28084
 
@@ -234,21 +333,28 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
                     pace_min_per_mile = pace_sec_per_meter * 1609.34 / 60
                     pace_minutes = int(pace_min_per_mile)
                     pace_seconds = int((pace_min_per_mile - pace_minutes) * 60)
-                    pace_str = f"{pace_minutes}:{pace_seconds:02d}/mi"
+                    pace_str = f"{pace_minutes}:{pace_seconds:02d}"
                 else:
-                    pace_str = "0:00/mi"
+                    pace_str = "0:00"
 
-                recent_runs.append({
+                run_data = {
                     "id": activity["id"],
                     "name": activity.get("name", "Run"),
-                    "date": activity_date_eastern.date().isoformat(),
-                    "day_of_week": activity_date_eastern.strftime("%A"),
                     "distance_mi": round(distance_mi, 1),
                     "elevation_ft": round(elevation_ft, 0),
                     "pace": pace_str,
-                    "moving_time_sec": activity["moving_time"],
                     "strava_url": f"https://www.strava.com/activities/{activity['id']}",
-                })
+                    "polyline": activity.get("map", {}).get("summary_polyline", ""),
+                }
+
+                # Keep the longest run for each day
+                if date_key not in runs_by_date or activity["distance"] > runs_by_date[date_key]["distance"]:
+                    runs_by_date[date_key] = {"distance": activity["distance"], "run": run_data}
+
+    # Fill in runs for each day
+    for day_data in last_7_days:
+        if day_data["date"] in runs_by_date:
+            day_data["run"] = runs_by_date[day_data["date"]]["run"]
 
     weekly_distance_mi = weekly_distance * 0.000621371
 
@@ -281,6 +387,6 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
         "milestone_high": milestone_high,
         "miles_per_day_low": round(miles_per_day_low, 2),
         "miles_per_day_high": round(miles_per_day_high, 2),
-        "recent_runs": recent_runs,
+        "last_7_days": last_7_days,
         "progress_percent": round((projected_yearly_mi - milestone_low) / 500 * 100, 1) if projected_yearly_mi else 0,
     }

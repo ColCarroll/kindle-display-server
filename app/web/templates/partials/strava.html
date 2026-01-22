@@ -34,29 +34,135 @@
         </p>
     </div>
 
-    <!-- Recent runs -->
-    {% if data.recent_runs %}
-    <h3>Recent Runs</h3>
-    <div class="runs-grid">
-        {% for run in data.recent_runs %}
-        <div class="run-card">
-            <div class="run-card-header">
-                {{ run.day_of_week }} - {{ run.distance_mi }} mi
+    <!-- Last 7 days grid -->
+    <div class="runs-week-grid">
+        {% for day in data.last_7_days %}
+        <div class="run-day {% if day.run %}has-run{% else %}rest-day{% endif %}">
+            <div class="run-day-header">{{ day.day_name }}</div>
+            {% if day.run %}
+            <a href="{{ day.run.strava_url }}" target="_blank" rel="noopener" class="run-day-content">
+                {% if day.run.svg_path %}
+                <svg viewBox="0 0 80 80" class="run-map">
+                    <path d="{{ day.run.svg_path }}" fill="none" stroke="#333" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                {% else %}
+                <div class="run-map-placeholder"></div>
+                {% endif %}
+                <div class="run-day-stats">
+                    <span class="run-distance">{{ day.run.distance_mi }}mi</span>
+                    <span class="run-pace">{{ day.run.pace }}/mi</span>
+                </div>
+            </a>
+            {% else %}
+            <div class="run-day-content rest">
+                <div class="rest-indicator">—</div>
             </div>
-            <div class="run-card-stats">
-                {{ run.pace }} | {{ run.elevation_ft|int }} ft
-            </div>
-            <div style="margin-top: 0.5rem;">
-                <a href="{{ run.strava_url }}" target="_blank" rel="noopener"
-                   style="font-size: 0.85rem; color: #fc4c02;">
-                    View on Strava
-                </a>
-            </div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
-    {% else %}
-    <p style="color: #666; font-style: italic;">No recent runs</p>
-    {% endif %}
 </div>
+
+<style>
+.runs-week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+}
+
+.run-day {
+    text-align: center;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 0.5rem;
+    background: #fafafa;
+}
+
+.run-day.rest-day {
+    background: #f5f5f5;
+    opacity: 0.7;
+}
+
+.run-day-header {
+    font-weight: bold;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.run-day-content {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+
+.run-day-content.rest {
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rest-indicator {
+    font-size: 1.5rem;
+    color: #ccc;
+}
+
+.run-map {
+    width: 100%;
+    max-width: 80px;
+    height: auto;
+    margin: 0 auto;
+    display: block;
+}
+
+.run-map-placeholder {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto;
+    background: #eee;
+    border-radius: 4px;
+}
+
+.run-day-stats {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.run-distance {
+    font-weight: bold;
+    display: block;
+}
+
+.run-pace {
+    color: #666;
+    font-size: 0.8rem;
+}
+
+@media (max-width: 600px) {
+    .runs-week-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (prefers-color-scheme: dark) {
+    .run-day {
+        background: #252525;
+        border-color: #444;
+    }
+    .run-day.rest-day {
+        background: #1a1a1a;
+    }
+    .run-day-header {
+        color: #ddd;
+    }
+    .run-map path {
+        stroke: #ddd;
+    }
+    .rest-indicator {
+        color: #555;
+    }
+}
+</style>
 {% endif %}
