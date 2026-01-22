@@ -11,8 +11,8 @@
         </p>
 
         <!-- Temperature chart as SVG - 5 days -->
-        <figure title="5-day forecast. Shaded areas are nighttime. Blue shading shows precipitation.">
-            <svg viewBox="0 0 900 450" class="weather-chart" preserveAspectRatio="xMidYMid meet" style="width: 100%; max-width: 1200px;">
+        <div class="weather-chart-container" title="5-day forecast. Shaded areas are nighttime. Blue shading shows precipitation.">
+            <svg viewBox="0 0 900 450" class="weather-chart" preserveAspectRatio="xMidYMid meet">
                 <title>5-day forecast. Shaded areas are nighttime. Blue shading shows precipitation.</title>
                 {% set temps = location.hourly[:120] %}
                 {% if temps %}
@@ -121,9 +121,40 @@
 
                 {% endif %}
             </svg>
-        </figure>
+        </div>
     </div>
     {% if not loop.last %}<hr>{% endif %}
     {% endfor %}
 </div>
+
+<style>
+.weather-section,
+.weather-section * {
+    max-width: none !important;
+}
+
+.weather-section {
+    width: 900px !important;
+}
+
+.weather-location {
+    width: 100% !important;
+}
+
+.weather-section h3,
+.weather-section p,
+.weather-section hr {
+    width: 100% !important;
+}
+
+.weather-chart-container {
+    width: 100% !important;
+    margin: 1rem 0;
+}
+
+.weather-chart {
+    width: 100% !important;
+    height: auto;
+}
+</style>
 {% endif %}

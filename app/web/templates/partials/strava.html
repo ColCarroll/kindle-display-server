@@ -18,7 +18,81 @@
         </div>
     </div>
 
-    <!-- Progress bar -->
+    <!-- Detrended mileage chart -->
+    {% if data.detrended_data %}
+    <div class="detrended-chart-container">
+        <svg viewBox="0 0 900 400" class="detrended-chart" preserveAspectRatio="xMidYMid meet">
+            {% set chart_left = 50 %}
+            {% set chart_right = 750 %}
+            {% set chart_top = 30 %}
+            {% set chart_bottom = 370 %}
+            {% set chart_width = chart_right - chart_left %}
+            {% set chart_height = chart_bottom - chart_top %}
+            {% set days_in_year = data.days_in_year %}
+            {% set days_elapsed = data.days_elapsed %}
+            {% set days_remaining = data.days_remaining %}
+
+            <!-- Y-axis range: where fastest (4000) and slowest (2500) pace lines are at current day -->
+            {% set max_slope = (4000 / days_in_year - data.avg_miles_per_day) %}
+            {% set min_slope = (2500 / days_in_year - data.avg_miles_per_day) %}
+            {% set y_max = max_slope * days_elapsed * 1.15 %}
+            {% set y_min = min_slope * days_elapsed * 1.15 %}
+            {% set y_range = y_max - y_min if y_max != y_min else 1 %}
+
+            <!-- Background with clip path -->
+            <defs>
+                <clipPath id="chart-clip">
+                    <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}"/>
+                </clipPath>
+            </defs>
+            <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}" fill="#fafafa"/>
+
+            <!-- Pace target lines (x-axis goes to days_elapsed, not full year) - clipped to chart area -->
+            {% for pace in data.pace_lines %}
+            {% set y_start = chart_top + ((y_max - 0) / y_range * chart_height) %}
+            {% set y_end_value = pace.slope * days_elapsed %}
+            {% set y_end = chart_top + ((y_max - y_end_value) / y_range * chart_height) %}
+            {% set miles_needed = pace.target - data.yearly_distance_mi %}
+            {% set miles_per_day_needed = miles_needed / days_remaining if days_remaining > 0 else 0 %}
+            <line x1="{{ chart_left }}" y1="{{ y_start }}" x2="{{ chart_right }}" y2="{{ y_end }}"
+                  stroke="{% if pace.target % 500 == 0 %}#666{% else %}#ccc{% endif %}"
+                  stroke-width="{% if pace.target % 500 == 0 %}1.5{% else %}1{% endif %}"
+                  stroke-dasharray="{% if pace.target % 500 == 0 %}5,3{% else %}3,3{% endif %}"
+                  clip-path="url(#chart-clip)"/>
+            {% if pace.target % 500 == 0 %}
+            <text x="{{ chart_right + 5 }}" y="{{ y_end + 5 }}" font-size="11" fill="#666" text-anchor="start">
+                {{ pace.target }} ({{ "%.1f"|format(miles_per_day_needed) }}/d)
+            </text>
+            {% endif %}
+            {% endfor %}
+
+            <!-- Your actual mileage line -->
+            {% if data.detrended_data|length > 1 %}
+            <polyline
+                points="{% for point in data.detrended_data %}{{ chart_left + (point.day / days_elapsed * chart_width) }},{{ chart_top + ((y_max - point.detrended) / y_range * chart_height) }} {% endfor %}"
+                fill="none"
+                stroke="#e63946"
+                stroke-width="1.5"
+                clip-path="url(#chart-clip)"/>
+            {% endif %}
+
+            <!-- X-axis labels (months up to current) -->
+            {% set month_days = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335] %}
+            {% set month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] %}
+            {% for month in range(1, 13) %}
+            {% set month_day = month_days[month - 1] %}
+            {% if month_day <= days_elapsed %}
+            {% set x_pos = chart_left + (month_day / days_elapsed * chart_width) %}
+            <line x1="{{ x_pos }}" y1="{{ chart_bottom }}" x2="{{ x_pos }}" y2="{{ chart_bottom + 5 }}" stroke="#666"/>
+            <text x="{{ x_pos }}" y="{{ chart_bottom + 18 }}" font-size="11" fill="#666" text-anchor="middle">
+                {{ month_names[month - 1] }}
+            </text>
+            {% endif %}
+            {% endfor %}
+        </svg>
+    </div>
+    {% else %}
+    <!-- Fallback progress bar if no detrended data -->
     <div class="progress-bar-container">
         <p style="margin-bottom: 0.5rem;">
             <strong>{{ data.milestone_low }}</strong> mi
@@ -28,22 +102,19 @@
             <div class="progress-bar-fill" style="width: {{ data.progress_percent }}%;"></div>
             <div class="progress-bar-label">{{ data.projected_yearly_mi|int }} mi projected</div>
         </div>
-        <p style="margin-top: 0.3rem; font-size: 0.85rem; color: #666;">
-            {{ data.miles_per_day_low }} mi/day to reach {{ data.milestone_low }} |
-            {{ data.miles_per_day_high }} mi/day to reach {{ data.milestone_high }}
-        </p>
     </div>
+    {% endif %}
 
     <!-- Week grid (Monday-Sunday) -->
     <div class="runs-week-grid">
         {% for day in data.last_7_days %}
-        <div class="run-day {% if day.run %}has-run{% else %}rest-day{% endif %}{% if day.is_today %} today{% endif %}{% if day.is_future %} future{% endif %}">
+        <div class="run-day {% if day.run %}has-run{% endif %}{% if day.run and day.run.is_last_week %} last-week{% endif %}{% if not day.run and not day.is_future %}rest-day{% endif %}{% if day.is_today %} today{% endif %}{% if day.is_future and not day.run %} future{% endif %}">
             <div class="run-day-header">{{ day.day_name }}</div>
             {% if day.run %}
             <a href="{{ day.run.strava_url }}" target="_blank" rel="noopener" class="run-day-content">
                 {% if day.run.svg_path %}
                 <svg viewBox="0 0 80 80" class="run-map">
-                    <path d="{{ day.run.svg_path }}" fill="none" stroke="#333" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="{{ day.run.svg_path }}" fill="none" stroke="{% if day.run.is_last_week %}#999{% else %}#333{% endif %}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 {% else %}
                 <div class="run-map-placeholder"></div>
@@ -64,6 +135,20 @@
 </div>
 
 <style>
+.strava-section {
+    width: 900px;
+    max-width: 100%;
+}
+
+.detrended-chart-container {
+    margin: 1.5rem 0;
+}
+
+.detrended-chart {
+    width: 100%;
+    height: auto;
+}
+
 .runs-week-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -90,6 +175,14 @@
 
 .run-day.future {
     opacity: 0.4;
+}
+
+.run-day.last-week {
+    opacity: 0.6;
+}
+
+.run-day.last-week .run-day-stats {
+    color: #888;
 }
 
 .run-day-header {
@@ -155,6 +248,15 @@
 }
 
 @media (prefers-color-scheme: dark) {
+    .detrended-chart rect {
+        fill: #252525;
+    }
+    .detrended-chart text {
+        fill: #ccc;
+    }
+    .detrended-chart line[stroke="#333"] {
+        stroke: #ddd;
+    }
     .run-day {
         background: #252525;
         border-color: #444;

@@ -297,6 +297,7 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
     # Find the Monday of the current week
     days_since_monday = today_eastern.weekday()  # 0=Monday, 6=Sunday
     monday = today_eastern - timedelta(days=days_since_monday)
+    last_monday = monday - timedelta(days=7)
 
     last_7_days = []
     for i in range(7):  # Monday through Sunday
@@ -310,7 +311,9 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
         })
 
     # Group runs by date (keep best run per day)
+    # Include both this week and last week's runs
     runs_by_date = {}
+    last_week_runs_by_weekday = {}  # Key: weekday (0-6), for fallback on future days
 
     if activities:
         for activity in activities:
@@ -321,46 +324,60 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
                 activity["start_date"], "%Y-%m-%dT%H:%M:%SZ"
             ).replace(tzinfo=UTC)
             activity_date_eastern = activity_date_utc.astimezone(EASTERN)
+            activity_date = activity_date_eastern.date()
 
             # Weekly total
             if activity_date_eastern >= week_start_eastern:
                 weekly_distance += activity["distance"]
 
-            # Check if in last 7 days
-            days_ago = (today_eastern - activity_date_eastern.date()).days
-            if 0 <= days_ago <= 6:
-                date_key = activity_date_eastern.date().isoformat()
-                distance_mi = activity["distance"] * 0.000621371
-                elevation_ft = activity.get("total_elevation_gain", 0) * 3.28084
+            # Check if in this week or last week (for fallback on future days)
+            days_ago = (today_eastern - activity_date).days
+            if days_ago < 0 or days_ago > 13:  # Only consider last 2 weeks
+                continue
 
-                # Calculate pace
-                if activity["distance"] > 0:
-                    pace_sec_per_meter = activity["moving_time"] / activity["distance"]
-                    pace_min_per_mile = pace_sec_per_meter * 1609.34 / 60
-                    pace_minutes = int(pace_min_per_mile)
-                    pace_seconds = int((pace_min_per_mile - pace_minutes) * 60)
-                    pace_str = f"{pace_minutes}:{pace_seconds:02d}"
-                else:
-                    pace_str = "0:00"
+            date_key = activity_date.isoformat()
+            distance_mi = activity["distance"] * 0.000621371
+            elevation_ft = activity.get("total_elevation_gain", 0) * 3.28084
 
-                run_data = {
-                    "id": activity["id"],
-                    "name": activity.get("name", "Run"),
-                    "distance_mi": round(distance_mi, 1),
-                    "elevation_ft": round(elevation_ft, 0),
-                    "pace": pace_str,
-                    "strava_url": f"https://www.strava.com/activities/{activity['id']}",
-                    "polyline": activity.get("map", {}).get("summary_polyline", ""),
-                }
+            # Calculate pace
+            if activity["distance"] > 0:
+                pace_sec_per_meter = activity["moving_time"] / activity["distance"]
+                pace_min_per_mile = pace_sec_per_meter * 1609.34 / 60
+                pace_minutes = int(pace_min_per_mile)
+                pace_seconds = int((pace_min_per_mile - pace_minutes) * 60)
+                pace_str = f"{pace_minutes}:{pace_seconds:02d}"
+            else:
+                pace_str = "0:00"
 
-                # Keep the longest run for each day
-                if date_key not in runs_by_date or activity["distance"] > runs_by_date[date_key]["distance"]:
-                    runs_by_date[date_key] = {"distance": activity["distance"], "run": run_data}
+            run_data = {
+                "id": activity["id"],
+                "name": activity.get("name", "Run"),
+                "distance_mi": round(distance_mi, 1),
+                "elevation_ft": round(elevation_ft, 0),
+                "pace": pace_str,
+                "strava_url": f"https://www.strava.com/activities/{activity['id']}",
+                "polyline": activity.get("map", {}).get("summary_polyline", ""),
+                "is_last_week": activity_date < monday,  # Flag if from last week
+            }
+
+            # Keep the longest run for each date
+            if date_key not in runs_by_date or activity["distance"] > runs_by_date[date_key]["distance"]:
+                runs_by_date[date_key] = {"distance": activity["distance"], "run": run_data}
+
+            # Also track last week's runs by weekday for fallback
+            if last_monday <= activity_date < monday:
+                weekday = activity_date.weekday()
+                if weekday not in last_week_runs_by_weekday or activity["distance"] > last_week_runs_by_weekday[weekday]["distance"]:
+                    last_week_runs_by_weekday[weekday] = {"distance": activity["distance"], "run": run_data}
 
     # Fill in runs for each day
-    for day_data in last_7_days:
+    for i, day_data in enumerate(last_7_days):
         if day_data["date"] in runs_by_date:
+            # This week's run exists
             day_data["run"] = runs_by_date[day_data["date"]]["run"]
+        elif day_data["is_future"] and i in last_week_runs_by_weekday:
+            # Future day: show last week's run as fallback
+            day_data["run"] = last_week_runs_by_weekday[i]["run"]
 
     weekly_distance_mi = weekly_distance * 0.000621371
 
@@ -382,12 +399,122 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
     miles_per_day_low = max(0, miles_needed_low / days_remaining) if days_remaining > 0 else 0
     miles_per_day_high = miles_needed_high / days_remaining if days_remaining > 0 else 0
 
+    # Build cumulative mileage by day of year for the detrended chart
+    # We need to fetch all activities this year for this
+    cumulative_by_day = {}
+    if activities:
+        # Sort activities by date
+        runs_this_year = []
+        for activity in activities:
+            if activity["type"] != "Run":
+                continue
+            activity_date_utc = datetime.strptime(
+                activity["start_date"], "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=UTC)
+            activity_date_eastern = activity_date_utc.astimezone(EASTERN)
+            if activity_date_eastern.year == now_eastern.year:
+                day_of_year = (activity_date_eastern.date() - datetime(now_eastern.year, 1, 1).date()).days + 1
+                distance_mi = activity["distance"] * 0.000621371
+                runs_this_year.append((day_of_year, distance_mi))
+
+        # Aggregate by day
+        daily_totals = {}
+        for day, dist in runs_this_year:
+            daily_totals[day] = daily_totals.get(day, 0) + dist
+
+        # Build cumulative
+        cumulative = 0
+        today_day_of_year = (today_eastern - datetime(now_eastern.year, 1, 1).date()).days + 1
+        for day in range(1, today_day_of_year + 1):
+            cumulative += daily_totals.get(day, 0)
+            cumulative_by_day[day] = cumulative
+
+    # Generate detrended chart data with sawtooth pattern
+    # - Line slopes DOWN during rest (expected miles accumulate, actual doesn't)
+    # - Line jumps UP when you run
+    # Detrended value = cumulative - avg_pace * day
+    #
+    # For sawtooth: on run days, show pre-run point then post-run point (vertical jump)
+    # On rest days, just show end-of-day point (continues diagonal down from previous)
+    detrended_data = []
+    if cumulative_by_day and avg_miles_per_day > 0:
+        # Use yearly_distance_mi as the true final cumulative (from stats API)
+        # Scale our calculated cumulative to match
+        max_day = max(cumulative_by_day.keys())
+        calculated_final = cumulative_by_day[max_day]
+
+        # Scale factor to make our cumulative match the true YTD
+        if calculated_final > 0:
+            scale = yearly_distance_mi / calculated_final
+        else:
+            scale = 1
+
+        # Compute today's integer day (1-indexed) and check if we have today's data
+        today_int = int(days_elapsed) + 1  # e.g., 21.5 days elapsed -> day 22
+        yesterday_cumulative_scaled = cumulative_by_day.get(today_int - 1, 0) * scale if today_int > 1 else 0
+        today_cumulative_scaled = cumulative_by_day.get(today_int, cumulative_by_day.get(today_int - 1, 0)) * scale
+        today_ran = (today_cumulative_scaled - yesterday_cumulative_scaled) > 0.5
+
+        # Start at day 0 with detrended=0 (everyone starts at the origin)
+        detrended_data.append({"day": 0, "detrended": 0})
+
+        prev_cumulative = 0
+        for day in sorted(cumulative_by_day.keys()):
+            # Skip today - we'll handle it separately at days_elapsed
+            if day >= today_int:
+                continue
+
+            cumulative = cumulative_by_day[day] * scale
+            daily_run = cumulative - prev_cumulative
+
+            # On run days, show pre-run state first (creates the vertical jump)
+            if daily_run > 0.5:
+                # Pre-run: previous cumulative at this day's x position
+                pre_run_detrended = prev_cumulative - avg_miles_per_day * day
+                detrended_data.append({"day": day, "detrended": round(pre_run_detrended, 1)})
+
+                # Post-run: current cumulative (small x offset for vertical line)
+                post_run_detrended = cumulative - avg_miles_per_day * day
+                detrended_data.append({"day": day + 0.01, "detrended": round(post_run_detrended, 1)})
+            else:
+                # Rest day: just end-of-day point
+                end_detrended = cumulative - avg_miles_per_day * day
+                detrended_data.append({"day": day, "detrended": round(end_detrended, 1)})
+
+            prev_cumulative = cumulative  # FIX: Update for next iteration
+
+        # Handle today's data - place at days_elapsed so final point is at y=0
+        if today_ran:
+            # Show pre-run state (yesterday's cumulative extended to now)
+            pre_run_detrended = yesterday_cumulative_scaled - avg_miles_per_day * days_elapsed
+            detrended_data.append({"day": days_elapsed, "detrended": round(pre_run_detrended, 1)})
+            # Post-run state: by definition, detrended = 0 at current time
+            detrended_data.append({"day": days_elapsed + 0.01, "detrended": 0})
+        else:
+            # No run today yet - detrended still equals 0 by definition
+            # (avg is computed from current YTD which hasn't changed today)
+            detrended_data.append({"day": days_elapsed, "detrended": 0})
+
+    # Calculate pace lines (detrended)
+    # For target T miles/year: detrended = (T/days_in_year - avg) * day
+    pace_targets = [2500, 2750, 3000, 3250, 3500, 3750, 4000]
+    pace_lines = []
+    for target in pace_targets:
+        target_per_day = target / days_in_year
+        slope = target_per_day - avg_miles_per_day
+        pace_lines.append({
+            "target": target,
+            "slope": round(slope, 4),
+            "target_per_day": round(target_per_day, 2),
+        })
+
     return {
         "weekly_distance_mi": round(weekly_distance_mi, 1),
         "yearly_distance_mi": round(yearly_distance_mi, 1) if yearly_distance_mi else 0,
         "projected_yearly_mi": round(projected_yearly_mi, 0) if projected_yearly_mi else 0,
         "avg_miles_per_day": round(avg_miles_per_day, 2),
         "days_elapsed": round(days_elapsed, 1),
+        "days_in_year": days_in_year,
         "days_remaining": round(days_remaining, 1),
         "milestone_low": milestone_low,
         "milestone_high": milestone_high,
@@ -395,4 +522,6 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
         "miles_per_day_high": round(miles_per_day_high, 2),
         "last_7_days": last_7_days,
         "progress_percent": round((projected_yearly_mi - milestone_low) / 500 * 100, 1) if projected_yearly_mi else 0,
+        "detrended_data": detrended_data,
+        "pace_lines": pace_lines,
     }
