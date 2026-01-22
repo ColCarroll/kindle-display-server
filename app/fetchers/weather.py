@@ -196,12 +196,16 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
         precip_amount = max(qpf_amount, snow_amount)
 
         forecast = period.get("shortForecast", "").lower()
+        temp = period["temperature"]
+        precip_prob = period.get("probabilityOfPrecipitation", {}).get("value", 0) or 0
+        # Consider it snow if: forecast mentions snow, snow amount > 0, OR temp is below freezing with any precip
         is_snowy = (
             any(
                 keyword in forecast
                 for keyword in ["snow", "flurries", "sleet", "wintry", "freezing"]
             )
             or snow_amount > 0
+            or (temp <= 32 and (precip_amount > 0 or precip_prob > 0))  # Any precip below freezing is snow
         )
 
         # Get sunrise/sunset for nighttime detection
