@@ -20,20 +20,31 @@
                 {% set max_temp = global_max_temp %}
                 {% set temp_range = max_temp - min_temp if max_temp != min_temp else 1 %}
                 {% set chart_left = 40 %}
-                {% set chart_width = 840 %}
+                {% set chart_width = 800 %}
+                {% set chart_right = chart_left + chart_width %}
                 {% set chart_top = 25 %}
                 {% set chart_height = 195 %}
                 {% set hour_width = chart_width / 120 %}
-                {% set precip_scale = 60 %}
+                {% set precip_max = global_max_precip %}
+                {% set precip_scale = chart_height / precip_max %}
 
-                <!-- Horizontal grid lines -->
+                <!-- Horizontal grid lines (temperature on left) -->
                 {% for i in range(5) %}
                 {% set grid_y = chart_top + (i * chart_height / 4) %}
                 {% set grid_temp = max_temp - (i * temp_range / 4) %}
-                <line x1="{{ chart_left }}" y1="{{ grid_y }}" x2="{{ chart_left + chart_width }}" y2="{{ grid_y }}"
+                <line x1="{{ chart_left }}" y1="{{ grid_y }}" x2="{{ chart_right }}" y2="{{ grid_y }}"
                       stroke="#e0e0e0" stroke-width="1"/>
                 <text x="{{ chart_left - 5 }}" y="{{ grid_y + 4 }}" font-size="10" fill="#666" text-anchor="end">
                     {{ grid_temp|int }}°
+                </text>
+                {% endfor %}
+
+                <!-- Right y-axis labels (precipitation in inches) -->
+                {% for i in range(6) %}
+                {% set precip_val = (5 - i) * precip_max / 5 %}
+                {% set grid_y = chart_top + (i * chart_height / 5) %}
+                <text x="{{ chart_right + 5 }}" y="{{ grid_y + 4 }}" font-size="10" fill="#2255aa" text-anchor="start">
+                    {{ "%.1f"|format(precip_val) }}"
                 </text>
                 {% endfor %}
 
@@ -61,18 +72,17 @@
 
                 <!-- Precipitation area (shaded region) -->
                 <polygon
-                    points="{{ chart_left }},{{ chart_top + chart_height }} {% for hour in temps %}{{ chart_left + loop.index0 * hour_width + hour_width/2 }},{{ chart_top + chart_height - hour.precip_amount * precip_scale }} {% endfor %}{{ chart_left + chart_width }},{{ chart_top + chart_height }}"
-                    fill="#6699cc"
-                    fill-opacity="0.3"
+                    points="{{ chart_left }},{{ chart_top + chart_height }} {% for hour in temps %}{{ chart_left + loop.index0 * hour_width + hour_width/2 }},{{ chart_top + chart_height - hour.precip_amount * precip_scale }} {% endfor %}{{ chart_right }},{{ chart_top + chart_height }}"
+                    fill="#3377bb"
+                    fill-opacity="0.5"
                     stroke="none"/>
 
                 <!-- Precipitation line -->
                 <polyline
                     points="{% for hour in temps %}{{ chart_left + loop.index0 * hour_width + hour_width/2 }},{{ chart_top + chart_height - hour.precip_amount * precip_scale }} {% endfor %}"
                     fill="none"
-                    stroke="#6699cc"
-                    stroke-width="1.5"
-                    opacity="0.8"/>
+                    stroke="#2255aa"
+                    stroke-width="2"/>
 
                 <!-- Daily precipitation labels -->
                 {% set current_date = none %}
@@ -84,7 +94,7 @@
                     {% if current_date and day_precip_total >= 0.05 %}
                     {% set label_x = chart_left + (day_start_idx + (loop.index0 - day_start_idx) / 2) * hour_width %}
                     <text x="{{ label_x }}" y="{{ chart_top + chart_height - 8 }}"
-                          font-size="10" fill="#4477aa" text-anchor="middle" font-weight="bold">
+                          font-size="11" fill="#2255aa" text-anchor="middle" font-weight="bold">
                         {{ "%.1f"|format(day_precip_total) }}"
                     </text>
                     {% endif %}

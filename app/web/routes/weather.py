@@ -37,11 +37,16 @@ async def weather_partial(request: Request, _user: str = Depends(require_auth)):
 
         # Compute shared y-axis limits across all locations
         all_temps = []
+        all_precip = []
         for loc in locations:
             all_temps.extend([h["temp"] for h in loc.get("hourly", [])[:120]])
+            all_precip.extend([h["precip_amount"] for h in loc.get("hourly", [])[:120]])
 
         global_min_temp = min(all_temps) if all_temps else 0
         global_max_temp = max(all_temps) if all_temps else 100
+        # Precip y-axis max: at least 0.5", or 120% of max precip (like Kindle version)
+        max_precip = max(all_precip) if all_precip else 0
+        global_max_precip = max(0.5, max_precip * 1.2)
 
         return templates.TemplateResponse(
             "partials/weather.html",
@@ -50,6 +55,7 @@ async def weather_partial(request: Request, _user: str = Depends(require_auth)):
                 "locations": locations,
                 "global_min_temp": global_min_temp,
                 "global_max_temp": global_max_temp,
+                "global_max_precip": global_max_precip,
             },
         )
     except Exception as e:
