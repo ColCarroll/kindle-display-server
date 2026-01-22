@@ -121,7 +121,7 @@ def fetch_weather_data(
             "city": f"{city}, {state}",
             "lat": lat,
             "lon": lon,
-            "periods": forecast_data["properties"]["periods"][:168],  # 7 days
+            "periods": forecast_data["properties"]["periods"][:120],  # 5 days
             "gridpoint": gridpoint_data["properties"],
             "fetched_at": datetime.now(UTC).isoformat(),
         }

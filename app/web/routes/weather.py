@@ -38,7 +38,7 @@ async def weather_partial(request: Request, _user: str = Depends(require_auth)):
         # Compute shared y-axis limits across all locations
         all_temps = []
         for loc in locations:
-            all_temps.extend([h["temp"] for h in loc.get("hourly", [])[:168]])
+            all_temps.extend([h["temp"] for h in loc.get("hourly", [])[:120]])
 
         global_min_temp = min(all_temps) if all_temps else 0
         global_max_temp = max(all_temps) if all_temps else 100

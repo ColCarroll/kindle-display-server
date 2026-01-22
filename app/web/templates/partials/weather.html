@@ -10,11 +10,11 @@
             <span class="weather-description">{{ location.current_desc }}</span>
         </p>
 
-        <!-- Temperature chart as SVG - 7 days -->
-        <figure title="7-day forecast. Shaded areas are nighttime. Blue markers show precipitation.">
+        <!-- Temperature chart as SVG - 5 days -->
+        <figure title="5-day forecast. Shaded areas are nighttime. Blue markers show precipitation.">
             <svg viewBox="0 0 900 180" class="weather-chart" preserveAspectRatio="xMidYMid meet" style="width: 100%; max-width: 1200px;">
-                <title>7-day forecast. Shaded areas are nighttime. Blue markers show precipitation.</title>
-                {% set temps = location.hourly[:168] %}
+                <title>5-day forecast. Shaded areas are nighttime. Blue markers show precipitation.</title>
+                {% set temps = location.hourly[:120] %}
                 {% if temps %}
                 {% set min_temp = global_min_temp %}
                 {% set max_temp = global_max_temp %}
@@ -23,7 +23,7 @@
                 {% set chart_width = 840 %}
                 {% set chart_top = 25 %}
                 {% set chart_height = 130 %}
-                {% set hour_width = chart_width / 168 %}
+                {% set hour_width = chart_width / 120 %}
 
                 <!-- Horizontal grid lines -->
                 {% for i in range(5) %}
