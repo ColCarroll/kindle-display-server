@@ -35,9 +35,22 @@ async def weather_partial(request: Request, _user: str = Depends(require_auth)):
                 {"request": request, "error": "Weather data unavailable"},
             )
 
+        # Compute shared y-axis limits across all locations
+        all_temps = []
+        for loc in locations:
+            all_temps.extend([h["temp"] for h in loc.get("hourly", [])[:168]])
+
+        global_min_temp = min(all_temps) if all_temps else 0
+        global_max_temp = max(all_temps) if all_temps else 100
+
         return templates.TemplateResponse(
             "partials/weather.html",
-            {"request": request, "locations": locations},
+            {
+                "request": request,
+                "locations": locations,
+                "global_min_temp": global_min_temp,
+                "global_max_temp": global_max_temp,
+            },
         )
     except Exception as e:
         return templates.TemplateResponse(

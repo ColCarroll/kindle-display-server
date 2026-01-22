@@ -11,12 +11,13 @@
         </p>
 
         <!-- Temperature chart as SVG - 7 days -->
-        <figure>
+        <figure title="7-day forecast. Shaded areas are nighttime. Blue markers show precipitation.">
             <svg viewBox="0 0 900 180" class="weather-chart" preserveAspectRatio="xMidYMid meet" style="width: 100%; max-width: 1200px;">
+                <title>7-day forecast. Shaded areas are nighttime. Blue markers show precipitation.</title>
                 {% set temps = location.hourly[:168] %}
                 {% if temps %}
-                {% set min_temp = temps|map(attribute='temp')|min %}
-                {% set max_temp = temps|map(attribute='temp')|max %}
+                {% set min_temp = global_min_temp %}
+                {% set max_temp = global_max_temp %}
                 {% set temp_range = max_temp - min_temp if max_temp != min_temp else 1 %}
                 {% set chart_left = 40 %}
                 {% set chart_width = 840 %}
@@ -84,7 +85,6 @@
 
                 {% endif %}
             </svg>
-            <figcaption>7-day forecast. Shaded areas are nighttime. Blue markers show precipitation.</figcaption>
         </figure>
 
         <!-- Daily precipitation totals -->
