@@ -21,7 +21,7 @@
 
         <!-- Temperature chart as SVG - 5 days -->
         <div class="weather-chart-container" title="5-day forecast. Shaded areas are nighttime. Blue/cyan bars show precipitation probability (rain/snow).">
-            <svg viewBox="0 0 900 450" class="weather-chart" preserveAspectRatio="xMidYMid meet">
+            <svg viewBox="0 0 900 300" class="weather-chart" preserveAspectRatio="xMidYMid meet">
                 <title>5-day forecast. Shaded areas are nighttime. Blue/cyan bars show precipitation probability (rain/snow).</title>
                 {% set temps = location.hourly[:120] %}
                 {% if temps %}
@@ -31,8 +31,8 @@
                 {% set chart_left = 40 %}
                 {% set chart_width = 800 %}
                 {% set chart_right = chart_left + chart_width %}
-                {% set chart_top = 40 %}
-                {% set chart_height = 380 %}
+                {% set chart_top = 30 %}
+                {% set chart_height = 240 %}
                 {% set hour_width = chart_width / 120 %}
 
                 <!-- Horizontal grid lines (temperature on left) -->
@@ -47,9 +47,9 @@
                 {% endfor %}
 
                 <!-- Right y-axis labels (precipitation probability %) -->
-                {% for i in range(5) %}
-                {% set prob_val = (4 - i) * 25 %}
-                {% set grid_y = chart_top + (i * chart_height / 4) %}
+                {% for i in range(3) %}
+                {% set prob_val = (2 - i) * 50 %}
+                {% set grid_y = chart_top + (i * chart_height / 2) %}
                 <text x="{{ chart_right + 5 }}" y="{{ grid_y + 5 }}" font-size="18" fill="#2255aa" text-anchor="start">
                     {{ prob_val }}%
                 </text>
@@ -149,8 +149,14 @@
 
 <!-- Refresh weather when locations change -->
 <script>
-document.body.addEventListener('locationsChanged', function() {
-    htmx.ajax('GET', '/partials/weather', {target: '[hx-get="/partials/weather"]', swap: 'outerHTML'});
+document.body.addEventListener('locationsChanged', function(evt) {
+    htmx.ajax('GET', '/partials/weather', {target: '#weather-container', swap: 'innerHTML'});
+});
+// Also listen for htmx:afterRequest in case the custom event doesn't fire
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    if (evt.detail.pathInfo && evt.detail.pathInfo.requestPath && evt.detail.pathInfo.requestPath.includes('/weather/locations')) {
+        htmx.ajax('GET', '/partials/weather', {target: '#weather-container', swap: 'innerHTML'});
+    }
 });
 </script>
 

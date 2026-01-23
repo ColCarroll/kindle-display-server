@@ -19,22 +19,18 @@ templates = Jinja2Templates(directory="app/web/templates")
 
 
 def geocode_zip(zip_code: str) -> tuple[str, str] | None:
-    """Convert a US zip code to lat/lon using Census Bureau geocoder."""
+    """Convert a US zip code to lat/lon using zippopotam.us API."""
     try:
-        url = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
-        params = {
-            "address": zip_code,
-            "benchmark": "Public_AR_Current",
-            "format": "json",
-        }
-        response = requests.get(url, params=params, timeout=10)
+        url = f"https://api.zippopotam.us/us/{zip_code}"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 404:
+            return None
         response.raise_for_status()
         data = response.json()
 
-        matches = data.get("result", {}).get("addressMatches", [])
-        if matches:
-            coords = matches[0]["coordinates"]
-            return str(coords["y"]), str(coords["x"])  # lat, lon
+        places = data.get("places", [])
+        if places:
+            return places[0]["latitude"], places[0]["longitude"]
         return None
     except Exception as e:
         logger.error(f"Geocoding failed for {zip_code}: {e}")
@@ -45,20 +41,21 @@ def geocode_zip(zip_code: str) -> tuple[str, str] | None:
 async def weather_partial(request: Request, _user: str = Depends(require_auth)):
     """Weather partial for HTMX loading."""
     try:
-        # Get locations from database
-        saved_locations = db.get_weather_locations()
+        # Start with default locations from config (these can't be deleted)
+        location_configs = [
+            {"lat": config.WEATHER_LAT_1, "lon": config.WEATHER_LON_1, "id": None, "custom_name": "Home"},
+            {"lat": config.WEATHER_LAT_2, "lon": config.WEATHER_LON_2, "id": None, "custom_name": "Wentworth"},
+        ]
 
-        # If no saved locations, use defaults from config
-        if not saved_locations:
-            location_configs = [
-                {"lat": config.WEATHER_LAT_1, "lon": config.WEATHER_LON_1, "id": None},
-                {"lat": config.WEATHER_LAT_2, "lon": config.WEATHER_LON_2, "id": None},
-            ]
-        else:
-            location_configs = [
-                {"lat": loc["lat"], "lon": loc["lon"], "id": loc["id"], "custom_name": loc["name"]}
-                for loc in saved_locations
-            ]
+        # Add any saved locations from database
+        saved_locations = db.get_weather_locations()
+        for loc in saved_locations:
+            location_configs.append({
+                "lat": loc["lat"],
+                "lon": loc["lon"],
+                "id": loc["id"],
+                "custom_name": loc["name"],
+            })
 
         # Fetch weather for all locations
         locations = []
@@ -115,6 +112,7 @@ async def add_location(
     _user: str = Depends(require_auth),
 ):
     """Add a new weather location."""
+    logger.info(f"Adding location: name={name}, zip_code={zip_code}")
     # Geocode the zip code
     coords = geocode_zip(zip_code)
     if not coords:
@@ -125,7 +123,8 @@ async def add_location(
         )
 
     lat, lon = coords
-    db.add_weather_location(name, zip_code, lat, lon)
+    location_id = db.add_weather_location(name, zip_code, lat, lon)
+    logger.info(f"Added location id={location_id}: {name} at {lat},{lon}")
 
     # Return a refresh trigger for HTMX
     return HTMLResponse(

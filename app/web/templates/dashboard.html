@@ -6,7 +6,8 @@
 
 {% block content %}
 <section class="dashboard-section">
-    <div hx-get="/partials/weather"
+    <div id="weather-container"
+         hx-get="/partials/weather"
          hx-trigger="load"
          hx-swap="innerHTML">
         <span class="loading"></span> Loading weather...
