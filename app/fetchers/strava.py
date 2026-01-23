@@ -402,13 +402,11 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
     miles_per_day_low = max(0, miles_needed_low / days_remaining) if days_remaining > 0 else 0
     miles_per_day_high = miles_needed_high / days_remaining if days_remaining > 0 else 0
 
-    # Build cumulative mileage and elevation by day of year for the detrended charts
-    # We need to fetch all activities this year for this
-    cumulative_by_day = {}
-    cumulative_elevation_by_day = {}
+    # Build list of runs with their exact timestamp (fractional day of year)
+    # This allows precise plotting of when runs occurred
+    runs_this_year = []
     if activities:
-        # Sort activities by date
-        runs_this_year = []
+        year_start = datetime(now_eastern.year, 1, 1, tzinfo=EASTERN)
         for activity in activities:
             if activity["type"] != "Run":
                 continue
@@ -417,93 +415,51 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
             ).replace(tzinfo=UTC)
             activity_date_eastern = activity_date_utc.astimezone(EASTERN)
             if activity_date_eastern.year == now_eastern.year:
-                day_of_year = (activity_date_eastern.date() - datetime(now_eastern.year, 1, 1).date()).days + 1
+                # Use fractional day for precise timing
+                fractional_day = (activity_date_eastern - year_start).total_seconds() / 86400
                 distance_mi = activity["distance"] * 0.000621371
                 elevation_ft = activity.get("total_elevation_gain", 0) * 3.28084
-                runs_this_year.append((day_of_year, distance_mi, elevation_ft))
+                runs_this_year.append({
+                    "day": fractional_day,
+                    "distance_mi": distance_mi,
+                    "elevation_ft": elevation_ft,
+                })
 
-        # Aggregate by day
-        daily_totals = {}
-        daily_elevation_totals = {}
-        for day, dist, elev in runs_this_year:
-            daily_totals[day] = daily_totals.get(day, 0) + dist
-            daily_elevation_totals[day] = daily_elevation_totals.get(day, 0) + elev
-
-        # Build cumulative
-        cumulative = 0
-        cumulative_elev = 0
-        today_day_of_year = (today_eastern - datetime(now_eastern.year, 1, 1).date()).days + 1
-        for day in range(1, today_day_of_year + 1):
-            cumulative += daily_totals.get(day, 0)
-            cumulative_elev += daily_elevation_totals.get(day, 0)
-            cumulative_by_day[day] = cumulative
-            cumulative_elevation_by_day[day] = cumulative_elev
+        # Sort by time
+        runs_this_year.sort(key=lambda x: x["day"])
 
     # Generate detrended chart data with sawtooth pattern
     # - Line slopes DOWN during rest (expected miles accumulate, actual doesn't)
     # - Line jumps UP when you run
     # Detrended value = cumulative - avg_pace * day
     #
-    # For sawtooth: on run days, show pre-run point then post-run point (vertical jump)
-    # On rest days, just show end-of-day point (continues diagonal down from previous)
+    # Using precise timestamps: for each run, show pre-run point then post-run point
     detrended_data = []
-    if cumulative_by_day and avg_miles_per_day > 0:
-        # Use yearly_distance_mi as the true final cumulative (from stats API)
-        # Scale our calculated cumulative to match
-        max_day = max(cumulative_by_day.keys())
-        calculated_final = cumulative_by_day[max_day]
+    if runs_this_year and avg_miles_per_day > 0:
+        # Calculate total from activities to scale to match stats API
+        calculated_total = sum(r["distance_mi"] for r in runs_this_year)
+        scale = yearly_distance_mi / calculated_total if calculated_total > 0 else 1
 
-        # Scale factor to make our cumulative match the true YTD
-        if calculated_final > 0:
-            scale = yearly_distance_mi / calculated_final
-        else:
-            scale = 1
-
-        # Compute today's integer day (1-indexed) and check if we have today's data
-        today_int = int(days_elapsed) + 1  # e.g., 21.5 days elapsed -> day 22
-        yesterday_cumulative_scaled = cumulative_by_day.get(today_int - 1, 0) * scale if today_int > 1 else 0
-        today_cumulative_scaled = cumulative_by_day.get(today_int, cumulative_by_day.get(today_int - 1, 0)) * scale
-        today_ran = (today_cumulative_scaled - yesterday_cumulative_scaled) > 0.5
-
-        # Start at day 0 with detrended=0 (everyone starts at the origin)
+        # Start at day 0 with detrended=0
         detrended_data.append({"day": 0, "detrended": 0})
 
-        prev_cumulative = 0
-        for day in sorted(cumulative_by_day.keys()):
-            # Skip today - we'll handle it separately at days_elapsed
-            if day >= today_int:
-                continue
+        cumulative = 0
+        for run in runs_this_year:
+            run_day = run["day"]
+            run_distance = run["distance_mi"] * scale
 
-            cumulative = cumulative_by_day[day] * scale
-            daily_run = cumulative - prev_cumulative
+            # Pre-run point: cumulative before this run at this time
+            pre_run_detrended = cumulative - avg_miles_per_day * run_day
+            detrended_data.append({"day": run_day, "detrended": round(pre_run_detrended, 1)})
 
-            # On run days, show pre-run state first (creates the vertical jump)
-            if daily_run > 0.5:
-                # Pre-run: previous cumulative at this day's x position
-                pre_run_detrended = prev_cumulative - avg_miles_per_day * day
-                detrended_data.append({"day": day, "detrended": round(pre_run_detrended, 1)})
+            # Post-run point: after adding this run's distance
+            cumulative += run_distance
+            post_run_detrended = cumulative - avg_miles_per_day * run_day
+            detrended_data.append({"day": run_day + 0.001, "detrended": round(post_run_detrended, 1)})
 
-                # Post-run: current cumulative (small x offset for vertical line)
-                post_run_detrended = cumulative - avg_miles_per_day * day
-                detrended_data.append({"day": day + 0.01, "detrended": round(post_run_detrended, 1)})
-            else:
-                # Rest day: just end-of-day point
-                end_detrended = cumulative - avg_miles_per_day * day
-                detrended_data.append({"day": day, "detrended": round(end_detrended, 1)})
-
-            prev_cumulative = cumulative  # FIX: Update for next iteration
-
-        # Handle today's data - place at days_elapsed so final point is at y=0
-        if today_ran:
-            # Show pre-run state (yesterday's cumulative extended to now)
-            pre_run_detrended = yesterday_cumulative_scaled - avg_miles_per_day * days_elapsed
-            detrended_data.append({"day": days_elapsed, "detrended": round(pre_run_detrended, 1)})
-            # Post-run state: by definition, detrended = 0 at current time
-            detrended_data.append({"day": days_elapsed + 0.01, "detrended": 0})
-        else:
-            # No run today yet - detrended still equals 0 by definition
-            # (avg is computed from current YTD which hasn't changed today)
-            detrended_data.append({"day": days_elapsed, "detrended": 0})
+        # Final point at current time (should be ~0 by definition of avg)
+        final_detrended = cumulative - avg_miles_per_day * days_elapsed
+        detrended_data.append({"day": days_elapsed, "detrended": round(final_detrended, 1)})
 
     # Calculate pace lines (detrended)
     # For target T miles/year: detrended = (T/days_in_year - avg) * day
@@ -521,48 +477,31 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
     # Generate detrended elevation chart data (same sawtooth pattern as mileage)
     avg_elevation_per_day = yearly_elevation_ft / days_elapsed if days_elapsed > 0 and yearly_elevation_ft else 0
     detrended_elevation_data = []
-    if cumulative_elevation_by_day and avg_elevation_per_day > 0:
-        max_day = max(cumulative_elevation_by_day.keys())
-        calculated_final_elev = cumulative_elevation_by_day[max_day]
+    if runs_this_year and avg_elevation_per_day > 0:
+        # Calculate total from activities to scale to match stats API
+        calculated_total_elev = sum(r["elevation_ft"] for r in runs_this_year)
+        scale_elev = yearly_elevation_ft / calculated_total_elev if calculated_total_elev > 0 else 1
 
-        if calculated_final_elev > 0:
-            scale_elev = yearly_elevation_ft / calculated_final_elev
-        else:
-            scale_elev = 1
-
-        today_int = int(days_elapsed) + 1
-        yesterday_elev_scaled = cumulative_elevation_by_day.get(today_int - 1, 0) * scale_elev if today_int > 1 else 0
-        today_elev_scaled = cumulative_elevation_by_day.get(today_int, cumulative_elevation_by_day.get(today_int - 1, 0)) * scale_elev
-        today_ran_elev = (today_elev_scaled - yesterday_elev_scaled) > 10  # 10ft threshold
-
+        # Start at day 0 with detrended=0
         detrended_elevation_data.append({"day": 0, "detrended": 0})
 
-        prev_cumulative_elev = 0
-        for day in sorted(cumulative_elevation_by_day.keys()):
-            if day >= today_int:
-                continue
+        cumulative_elev = 0
+        for run in runs_this_year:
+            run_day = run["day"]
+            run_elevation = run["elevation_ft"] * scale_elev
 
-            cumulative_elev = cumulative_elevation_by_day[day] * scale_elev
-            daily_elev = cumulative_elev - prev_cumulative_elev
+            # Pre-run point
+            pre_run_detrended = cumulative_elev - avg_elevation_per_day * run_day
+            detrended_elevation_data.append({"day": run_day, "detrended": round(pre_run_detrended, 0)})
 
-            if daily_elev > 10:  # Run day with elevation
-                pre_run_detrended = prev_cumulative_elev - avg_elevation_per_day * day
-                detrended_elevation_data.append({"day": day, "detrended": round(pre_run_detrended, 0)})
+            # Post-run point
+            cumulative_elev += run_elevation
+            post_run_detrended = cumulative_elev - avg_elevation_per_day * run_day
+            detrended_elevation_data.append({"day": run_day + 0.001, "detrended": round(post_run_detrended, 0)})
 
-                post_run_detrended = cumulative_elev - avg_elevation_per_day * day
-                detrended_elevation_data.append({"day": day + 0.01, "detrended": round(post_run_detrended, 0)})
-            else:
-                end_detrended = cumulative_elev - avg_elevation_per_day * day
-                detrended_elevation_data.append({"day": day, "detrended": round(end_detrended, 0)})
-
-            prev_cumulative_elev = cumulative_elev
-
-        if today_ran_elev:
-            pre_run_detrended = yesterday_elev_scaled - avg_elevation_per_day * days_elapsed
-            detrended_elevation_data.append({"day": days_elapsed, "detrended": round(pre_run_detrended, 0)})
-            detrended_elevation_data.append({"day": days_elapsed + 0.01, "detrended": 0})
-        else:
-            detrended_elevation_data.append({"day": days_elapsed, "detrended": 0})
+        # Final point at current time
+        final_detrended = cumulative_elev - avg_elevation_per_day * days_elapsed
+        detrended_elevation_data.append({"day": days_elapsed, "detrended": round(final_detrended, 0)})
 
     # Elevation pace lines (targets in feet)
     elevation_targets = [100000, 125000, 150000, 175000, 200000, 225000, 250000]

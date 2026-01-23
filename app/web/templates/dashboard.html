@@ -8,23 +8,25 @@
 <section class="dashboard-section">
     <div id="weather-container"
          hx-get="/partials/weather"
-         hx-trigger="load"
+         hx-trigger="load, every 5m"
          hx-swap="innerHTML">
         <span class="loading"></span> Loading weather...
     </div>
 </section>
 
 <section class="dashboard-section">
-    <div hx-get="/partials/strava"
-         hx-trigger="load"
+    <div id="strava-container"
+         hx-get="/partials/strava"
+         hx-trigger="load, every 5m"
          hx-swap="innerHTML">
         <span class="loading"></span> Loading running stats...
     </div>
 </section>
 
 <section class="dashboard-section">
-    <div hx-get="/partials/calendar"
-         hx-trigger="load"
+    <div id="calendar-container"
+         hx-get="/partials/calendar"
+         hx-trigger="load, every 5m"
          hx-swap="innerHTML">
         <span class="loading"></span> Loading calendar...
     </div>
