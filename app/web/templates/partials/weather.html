@@ -134,28 +134,46 @@
     {% if not loop.last %}<hr>{% endif %}
     {% endfor %}
 
-    <!-- Add location form -->
-    <div class="add-location-form">
-        <form hx-post="/weather/locations"
-              hx-swap="none"
-              hx-target="#add-location-error">
-            <input type="text" name="name" placeholder="Name (e.g. Home)" required>
-            <input type="text" name="zip_code" placeholder="Zip code" required pattern="[0-9]{5}" maxlength="5">
-            <button type="submit">Add Location</button>
-        </form>
-        <div id="add-location-error"></div>
+    <!-- More/Less weather toggle -->
+    <div class="weather-toggle">
+        {% if show_all %}
+        <a href="#"
+           hx-get="/partials/weather"
+           hx-target="#weather-container"
+           hx-swap="innerHTML"
+           class="weather-toggle-link">▲ Less weather</a>
+
+        <!-- Add location form (only shown when expanded) -->
+        <div class="add-location-form">
+            <form hx-post="/weather/locations"
+                  hx-swap="none"
+                  hx-target="#add-location-error">
+                <input type="text" name="name" placeholder="Name (e.g. Home)" required>
+                <input type="text" name="zip_code" placeholder="Zip code" required pattern="[0-9]{5}" maxlength="5">
+                <button type="submit">Add Location</button>
+            </form>
+            <div id="add-location-error"></div>
+        </div>
+        {% else %}
+        <a href="#"
+           hx-get="/partials/weather?show_all=true"
+           hx-target="#weather-container"
+           hx-swap="innerHTML"
+           class="weather-toggle-link">▼ More weather</a>
+        {% endif %}
     </div>
 </div>
 
 <!-- Refresh weather when locations change -->
 <script>
 document.body.addEventListener('locationsChanged', function(evt) {
-    htmx.ajax('GET', '/partials/weather', {target: '#weather-container', swap: 'innerHTML'});
+    // Stay in expanded view after adding/deleting
+    htmx.ajax('GET', '/partials/weather?show_all=true', {target: '#weather-container', swap: 'innerHTML'});
 });
 // Also listen for htmx:afterRequest in case the custom event doesn't fire
 document.body.addEventListener('htmx:afterRequest', function(evt) {
     if (evt.detail.pathInfo && evt.detail.pathInfo.requestPath && evt.detail.pathInfo.requestPath.includes('/weather/locations')) {
-        htmx.ajax('GET', '/partials/weather', {target: '#weather-container', swap: 'innerHTML'});
+        htmx.ajax('GET', '/partials/weather?show_all=true', {target: '#weather-container', swap: 'innerHTML'});
     }
 });
 </script>
@@ -261,6 +279,22 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
     color: #c00;
     margin-top: 0.5rem;
     font-size: 0.9rem;
+}
+
+.weather-toggle {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #ddd;
+}
+
+.weather-toggle-link {
+    color: #555;
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.weather-toggle-link:hover {
+    color: #000;
 }
 </style>
 {% endif %}

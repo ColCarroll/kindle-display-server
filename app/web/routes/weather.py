@@ -38,7 +38,11 @@ def geocode_zip(zip_code: str) -> tuple[str, str] | None:
 
 
 @router.get("/partials/weather", response_class=HTMLResponse)
-async def weather_partial(request: Request, _user: str = Depends(require_auth)):
+async def weather_partial(
+    request: Request,
+    show_all: bool = False,
+    _user: str = Depends(require_auth),
+):
     """Weather partial for HTMX loading."""
     try:
         # Start with default locations from config (these can't be deleted)
@@ -47,15 +51,16 @@ async def weather_partial(request: Request, _user: str = Depends(require_auth)):
             {"lat": config.WEATHER_LAT_2, "lon": config.WEATHER_LON_2, "id": None, "custom_name": "Wentworth"},
         ]
 
-        # Add any saved locations from database
+        # Add saved locations from database only if show_all is true
         saved_locations = db.get_weather_locations()
-        for loc in saved_locations:
-            location_configs.append({
-                "lat": loc["lat"],
-                "lon": loc["lon"],
-                "id": loc["id"],
-                "custom_name": loc["name"],
-            })
+        if show_all:
+            for loc in saved_locations:
+                location_configs.append({
+                    "lat": loc["lat"],
+                    "lon": loc["lon"],
+                    "id": loc["id"],
+                    "custom_name": loc["name"],
+                })
 
         # Fetch weather for all locations
         locations = []
@@ -95,6 +100,8 @@ async def weather_partial(request: Request, _user: str = Depends(require_auth)):
                 "global_min_temp": global_min_temp,
                 "global_max_temp": global_max_temp,
                 "global_max_precip": global_max_precip,
+                "show_all": show_all,
+                "has_saved_locations": len(saved_locations) > 0,
             },
         )
     except Exception as e:
