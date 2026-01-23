@@ -16,6 +16,9 @@
         </div>
         <p class="weather-current">
             <span class="temp-high">{{ location.current_temp }}°F</span>
+            {% if location.current_feels_like and (location.current_feels_like - location.current_temp)|abs >= 3 %}
+            <span class="feels-like">(feels {{ location.current_feels_like }}°)</span>
+            {% endif %}
             <span class="weather-description">{{ location.current_desc }}</span>
         </p>
 
@@ -119,6 +122,17 @@
                     {{ "%.1f"|format(ns.day_precip_total) }}"{% if ns.day_is_snow %}❄{% endif %}
                 </text>
                 {% endif %}
+
+                <!-- Feels-like temperature line (wind chill=blue, heat index=red) -->
+                {% set first_feels = temps[0].feels_like if temps else 0 %}
+                {% set first_temp = temps[0].temp if temps else 0 %}
+                {% set feels_color = '#3377cc' if first_feels <= first_temp else '#cc3333' %}
+                <polyline
+                    points="{% for hour in temps %}{{ chart_left + loop.index0 * hour_width + hour_width/2 }},{{ chart_top + chart_height - ((hour.feels_like - min_temp) / temp_range * chart_height) }} {% endfor %}"
+                    fill="none"
+                    stroke="{{ feels_color }}"
+                    stroke-width="1.5"
+                    stroke-opacity="0.7"/>
 
                 <!-- Temperature line -->
                 <polyline
@@ -295,6 +309,12 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
 
 .weather-toggle-link:hover {
     color: #000;
+}
+
+.feels-like {
+    color: #666;
+    font-size: 0.9em;
+    margin-left: 0.3rem;
 }
 </style>
 {% endif %}

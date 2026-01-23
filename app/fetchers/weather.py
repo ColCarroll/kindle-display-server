@@ -2,7 +2,7 @@
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -160,9 +160,11 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
     # Parse gridpoint precipitation data
     qpf_values = gridpoint.get("quantitativePrecipitation", {}).get("values", [])
     snow_values = gridpoint.get("snowfallAmount", {}).get("values", [])
+    apparent_temp_values = gridpoint.get("apparentTemperature", {}).get("values", [])
 
     qpf_by_hour = {}
     snow_by_hour = {}
+    apparent_temp_by_hour = {}
 
     for qpf_entry in qpf_values:
         valid_time = qpf_entry.get("validTime", "")
@@ -179,6 +181,26 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
             start_time_str = valid_time.split("/")[0]
             start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
             snow_by_hour[start_time.replace(minute=0, second=0, microsecond=0)] = value / 25.4
+
+    # Parse apparent temperature (comes in Celsius, convert to Fahrenheit)
+    for temp_entry in apparent_temp_values:
+        valid_time = temp_entry.get("validTime", "")
+        value = temp_entry.get("value")
+        if value is not None and "/" in valid_time:
+            start_time_str, duration = valid_time.split("/")
+            start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+            # Convert Celsius to Fahrenheit
+            feels_like_f = round(value * 9 / 5 + 32)
+            # Duration can be PT1H, PT2H, etc. - apply to each hour in range
+            hours = 1
+            if duration.startswith("PT") and duration.endswith("H"):
+                try:
+                    hours = int(duration[2:-1])
+                except ValueError:
+                    hours = 1
+            for h in range(hours):
+                hour_key = (start_time + timedelta(hours=h)).replace(minute=0, second=0, microsecond=0)
+                apparent_temp_by_hour[hour_key] = feels_like_f
 
     # Process hourly data
     hourly = []
@@ -213,12 +235,16 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
         sunrise, sunset = get_sunrise_sunset(float(data["lat"]), float(data["lon"]), start_eastern.date())
         is_night = start_eastern < sunrise or start_eastern >= sunset
 
+        # Get feels-like temperature (apparent temperature)
+        feels_like = apparent_temp_by_hour.get(hour_key, temp)
+
         hourly.append({
             "time": start_time.isoformat(),
             "time_eastern": start_eastern.isoformat(),
             "hour": start_eastern.hour,
             "day_name": start_eastern.strftime("%a"),  # "Fri", "Sat", etc.
             "temp": period["temperature"],
+            "feels_like": feels_like,
             "precip_prob": period.get("probabilityOfPrecipitation", {}).get("value", 0) or 0,
             "precip_amount": precip_amount,
             "is_snow": is_snowy,
@@ -237,6 +263,7 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
 
     # Get current conditions
     current_temp = hourly[0]["temp"] if hourly else None
+    current_feels_like = hourly[0]["feels_like"] if hourly else None
     current_desc = hourly[0]["description"] if hourly else None
 
     return {
@@ -244,6 +271,7 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
         "lat": data["lat"],
         "lon": data["lon"],
         "current_temp": current_temp,
+        "current_feels_like": current_feels_like,
         "current_desc": current_desc,
         "hourly": hourly,
         "daily_precip": {k: {"amount": v, "is_snow": daily_is_snow[k]} for k, v in daily_precip.items()},

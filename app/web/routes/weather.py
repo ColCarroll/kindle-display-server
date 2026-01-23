@@ -79,12 +79,14 @@ async def weather_partial(
                 {"request": request, "error": "Weather data unavailable"},
             )
 
-        # Compute shared y-axis limits across all locations
+        # Compute shared y-axis limits across all locations (include feels_like for wind chill/heat index)
         all_temps = []
         all_precip = []
         for loc in locations:
-            all_temps.extend([h["temp"] for h in loc.get("hourly", [])[:120]])
-            all_precip.extend([h["precip_amount"] for h in loc.get("hourly", [])[:120]])
+            hourly = loc.get("hourly", [])[:120]
+            all_temps.extend([h["temp"] for h in hourly])
+            all_temps.extend([h.get("feels_like", h["temp"]) for h in hourly])
+            all_precip.extend([h["precip_amount"] for h in hourly])
 
         global_min_temp = min(all_temps) if all_temps else 0
         global_max_temp = max(all_temps) if all_temps else 100
