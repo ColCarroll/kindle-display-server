@@ -163,7 +163,7 @@ def fetch_recent_activities(limit: int = 30, after: int | None = None, use_cache
 
     url = "https://www.strava.com/api/v3/athlete/activities"
     headers = {"Authorization": f"Bearer {access_token}"}
-    params = {"per_page": min(limit, 200)}
+    params: dict = {"per_page": min(limit, 200)}
 
     if after:
         params["after"] = after
@@ -180,6 +180,53 @@ def fetch_recent_activities(limit: int = 30, after: int | None = None, use_cache
     except Exception as e:
         logger.error(f"Failed to fetch Strava activities: {e}")
         return None
+
+
+def fetch_activities_for_year(year: int, use_cache: bool = True) -> list[dict] | None:
+    """Fetch all activities for a given year, using local SQLite cache.
+
+    This is more efficient than fetch_recent_activities for yearly charts
+    because it stores activities permanently and only fetches new ones.
+    """
+    # Get cached activities from SQLite
+    cached_activities = cache.get_cached_strava_activities(year)
+
+    # Find the latest cached activity date
+    latest_date = cache.get_latest_strava_activity_date(year)
+
+    if use_cache and latest_date:
+        # Only fetch activities after the latest cached one
+        # Convert ISO date to unix timestamp
+        latest_dt = datetime.fromisoformat(latest_date.replace("Z", "+00:00"))
+        after_timestamp = int(latest_dt.timestamp())
+        logger.info(f"Fetching activities after {latest_date} ({len(cached_activities)} cached)")
+    else:
+        # Fetch all activities for the year
+        year_start = datetime(year, 1, 1, tzinfo=UTC)
+        after_timestamp = int(year_start.timestamp())
+        logger.info(f"Fetching all activities for {year}")
+
+    # Fetch new activities from API
+    new_activities = fetch_recent_activities(limit=200, after=after_timestamp, use_cache=False)
+
+    if new_activities:
+        # Filter to only this year and cache them
+        year_activities = [
+            a for a in new_activities
+            if a.get("start_date", "").startswith(str(year))
+        ]
+        if year_activities:
+            added = cache.cache_strava_activities(year_activities)
+            logger.info(f"Cached {added} new activities")
+
+        # Combine cached + new (dedup by ID)
+        seen_ids = {a["id"] for a in cached_activities}
+        for a in year_activities:
+            if a["id"] not in seen_ids:
+                cached_activities.append(a)
+                seen_ids.add(a["id"])
+
+    return cached_activities if cached_activities else None
 
 
 def fetch_athlete_stats(use_cache: bool = True) -> dict | None:
@@ -286,8 +333,8 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
         logger.info(f"Got YTD mileage from stats endpoint: {yearly_distance_mi:.1f} mi")
         logger.info(f"Got YTD elevation from stats endpoint: {yearly_elevation_ft:.0f} ft")
 
-    # Get recent activities for weekly stats and run details
-    activities = fetch_recent_activities(limit=30, use_cache=use_cache)
+    # Get activities for the current year (uses local SQLite cache)
+    activities = fetch_activities_for_year(now_eastern.year, use_cache=use_cache)
 
     if not activities and yearly_distance_mi is None:
         return None

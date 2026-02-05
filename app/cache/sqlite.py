@@ -40,6 +40,17 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS strava_activities (
+            activity_id INTEGER PRIMARY KEY,
+            start_date TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            data TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_strava_year ON strava_activities(year)
+    """)
     conn.commit()
 
 
@@ -161,5 +172,83 @@ def delete_weather_location(location_id: int) -> bool:
         )
         conn.commit()
         return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+# Strava activity caching
+
+def get_cached_strava_activities(year: int) -> list[dict[str, Any]]:
+    """Get all cached Strava activities for a given year."""
+    conn = _get_connection()
+    try:
+        cursor = conn.execute(
+            "SELECT data FROM strava_activities WHERE year = ? ORDER BY start_date",
+            (year,)
+        )
+        return [json.loads(row["data"]) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_latest_strava_activity_date(year: int) -> str | None:
+    """Get the start_date of the most recent cached activity for a year."""
+    conn = _get_connection()
+    try:
+        cursor = conn.execute(
+            "SELECT MAX(start_date) as max_date FROM strava_activities WHERE year = ?",
+            (year,)
+        )
+        row = cursor.fetchone()
+        return row["max_date"] if row else None
+    finally:
+        conn.close()
+
+
+def cache_strava_activities(activities: list[dict[str, Any]]) -> int:
+    """Cache Strava activities. Returns count of new activities added."""
+    conn = _get_connection()
+    try:
+        added = 0
+        for activity in activities:
+            activity_id = activity.get("id")
+            start_date = activity.get("start_date", "")
+            if not activity_id or not start_date:
+                continue
+
+            # Extract year from start_date (format: 2026-01-15T08:30:00Z)
+            year = int(start_date[:4])
+
+            try:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO strava_activities (activity_id, start_date, year, data)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (activity_id, start_date, year, json.dumps(activity)),
+                )
+                if conn.total_changes:
+                    added += 1
+            except sqlite3.IntegrityError:
+                pass  # Activity already exists
+
+        conn.commit()
+        return added
+    finally:
+        conn.close()
+
+
+def clear_strava_cache(year: int | None = None) -> int:
+    """Clear Strava activity cache. If year is None, clears all years."""
+    conn = _get_connection()
+    try:
+        if year:
+            cursor = conn.execute(
+                "DELETE FROM strava_activities WHERE year = ?", (year,)
+            )
+        else:
+            cursor = conn.execute("DELETE FROM strava_activities")
+        conn.commit()
+        return cursor.rowcount
     finally:
         conn.close()
