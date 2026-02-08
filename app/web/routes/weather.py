@@ -47,20 +47,32 @@ async def weather_partial(
     try:
         # Start with default locations from config (these can't be deleted)
         location_configs = [
-            {"lat": config.WEATHER_LAT_1, "lon": config.WEATHER_LON_1, "id": None, "custom_name": "Home"},
-            {"lat": config.WEATHER_LAT_2, "lon": config.WEATHER_LON_2, "id": None, "custom_name": "Wentworth"},
+            {
+                "lat": config.WEATHER_LAT_1,
+                "lon": config.WEATHER_LON_1,
+                "id": None,
+                "custom_name": "Home",
+            },
+            {
+                "lat": config.WEATHER_LAT_2,
+                "lon": config.WEATHER_LON_2,
+                "id": None,
+                "custom_name": "Wentworth",
+            },
         ]
 
         # Add saved locations from database only if show_all is true
         saved_locations = db.get_weather_locations()
         if show_all:
             for loc in saved_locations:
-                location_configs.append({
-                    "lat": loc["lat"],
-                    "lon": loc["lon"],
-                    "id": loc["id"],
-                    "custom_name": loc["name"],
-                })
+                location_configs.append(
+                    {
+                        "lat": loc["lat"],
+                        "lon": loc["lon"],
+                        "id": loc["id"],
+                        "custom_name": loc["name"],
+                    }
+                )
 
         # Fetch weather for all locations
         locations = []

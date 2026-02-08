@@ -41,9 +41,11 @@ def test_detrended_chart_first_point_at_origin():
         }
     }
 
-    with patch("app.fetchers.strava.fetch_activities_for_year", return_value=activities), \
-         patch("app.fetchers.strava.fetch_athlete_stats", return_value=mock_stats), \
-         patch("app.fetchers.strava.datetime") as mock_dt:
+    with (
+        patch("app.fetchers.strava.fetch_activities_for_year", return_value=activities),
+        patch("app.fetchers.strava.fetch_athlete_stats", return_value=mock_stats),
+        patch("app.fetchers.strava.datetime") as mock_dt,
+    ):
         # Mock "now" to be Jan 4 at noon
         mock_now = datetime(year, 1, 4, 12, 0, 0, tzinfo=EASTERN)
         mock_dt.now.return_value = mock_now
@@ -80,9 +82,11 @@ def test_detrended_chart_final_point_near_zero():
         }
     }
 
-    with patch("app.fetchers.strava.fetch_activities_for_year", return_value=activities), \
-         patch("app.fetchers.strava.fetch_athlete_stats", return_value=mock_stats), \
-         patch("app.fetchers.strava.datetime") as mock_dt:
+    with (
+        patch("app.fetchers.strava.fetch_activities_for_year", return_value=activities),
+        patch("app.fetchers.strava.fetch_athlete_stats", return_value=mock_stats),
+        patch("app.fetchers.strava.datetime") as mock_dt,
+    ):
         mock_now = datetime(year, 1, 4, 12, 0, 0, tzinfo=EASTERN)
         mock_dt.now.return_value = mock_now
         mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
@@ -95,7 +99,9 @@ def test_detrended_chart_final_point_near_zero():
 
     # Final point should be close to 0
     final_point = detrended[-1]
-    assert abs(final_point["detrended"]) < 1.0, f"Final detrended was {final_point['detrended']}, expected ~0"
+    assert abs(final_point["detrended"]) < 1.0, (
+        f"Final detrended was {final_point['detrended']}, expected ~0"
+    )
 
 
 def test_detrended_includes_all_runs():
@@ -105,10 +111,7 @@ def test_detrended_includes_all_runs():
     year = 2026
     jan1 = datetime(year, 1, 1, 8, 0, 0)
     # Create 5 runs on different days
-    activities = [
-        make_activity(jan1 + timedelta(days=i), 5.0 + i)
-        for i in range(5)
-    ]
+    activities = [make_activity(jan1 + timedelta(days=i), 5.0 + i) for i in range(5)]
 
     total_miles = sum(5.0 + i for i in range(5))
     mock_stats = {
@@ -118,9 +121,11 @@ def test_detrended_includes_all_runs():
         }
     }
 
-    with patch("app.fetchers.strava.fetch_activities_for_year", return_value=activities), \
-         patch("app.fetchers.strava.fetch_athlete_stats", return_value=mock_stats), \
-         patch("app.fetchers.strava.datetime") as mock_dt:
+    with (
+        patch("app.fetchers.strava.fetch_activities_for_year", return_value=activities),
+        patch("app.fetchers.strava.fetch_athlete_stats", return_value=mock_stats),
+        patch("app.fetchers.strava.datetime") as mock_dt,
+    ):
         mock_now = datetime(year, 1, 6, 12, 0, 0, tzinfo=EASTERN)
         mock_dt.now.return_value = mock_now
         mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
@@ -158,9 +163,11 @@ def test_detrended_sawtooth_pattern():
         }
     }
 
-    with patch("app.fetchers.strava.fetch_activities_for_year", return_value=activities), \
-         patch("app.fetchers.strava.fetch_athlete_stats", return_value=mock_stats), \
-         patch("app.fetchers.strava.datetime") as mock_dt:
+    with (
+        patch("app.fetchers.strava.fetch_activities_for_year", return_value=activities),
+        patch("app.fetchers.strava.fetch_athlete_stats", return_value=mock_stats),
+        patch("app.fetchers.strava.datetime") as mock_dt,
+    ):
         mock_now = datetime(year, 1, 2, 12, 0, 0, tzinfo=EASTERN)
         mock_dt.now.return_value = mock_now
         mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)

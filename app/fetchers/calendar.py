@@ -33,7 +33,7 @@ def fetch_calendar_events(use_cache: bool = True) -> list[dict[str, Any]]:
     # Check cache
     if use_cache:
         cached = cache.get(cache_key)
-        if cached:
+        if cached is not None and isinstance(cached, list):
             logger.info("Using cached calendar data")
             return cached
 
@@ -126,13 +126,15 @@ def fetch_calendar_events(use_cache: bool = True) -> list[dict[str, Any]]:
                 for event in events:
                     start = event["start"].get("dateTime", event["start"].get("date"))
                     end = event["end"].get("dateTime", event["end"].get("date"))
-                    all_events.append({
-                        "summary": event.get("summary", "Untitled"),
-                        "start": start,
-                        "end": end,
-                        "calendar_name": calendar_name,
-                        "is_all_day": "T" not in start,
-                    })
+                    all_events.append(
+                        {
+                            "summary": event.get("summary", "Untitled"),
+                            "start": start,
+                            "end": end,
+                            "calendar_name": calendar_name,
+                            "is_all_day": "T" not in start,
+                        }
+                    )
 
             except Exception as e:
                 logger.error(f"Failed to fetch events from calendar {calendar_id}: {e}")
@@ -199,12 +201,14 @@ def get_events_by_day(use_cache: bool = True) -> dict[str, Any]:
         else:
             time_str = start_dt_eastern.strftime("%I:%M%p").lstrip("0").lower().replace(":00", "")
 
-        events_by_day[date_key].append({
-            "summary": event["summary"],
-            "time": time_str,
-            "calendar_name": event.get("calendar_name", ""),
-            "is_all_day": event.get("is_all_day", False),
-        })
+        events_by_day[date_key].append(
+            {
+                "summary": event["summary"],
+                "time": time_str,
+                "calendar_name": event.get("calendar_name", ""),
+                "is_all_day": event.get("is_all_day", False),
+            }
+        )
 
     # Organize by today/tomorrow/future
     today_events = events_by_day.get(today.isoformat(), [])

@@ -28,7 +28,7 @@ async def dashboard(request: Request):
 
 
 @router.get("/login-page", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = None):
+async def login_page(request: Request, error: str | None = None):
     """Login page."""
     user_email = get_current_user(request)
     if user_email:

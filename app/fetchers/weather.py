@@ -20,8 +20,14 @@ EASTERN = ZoneInfo("America/New_York")
 logger = logging.getLogger(__name__)
 
 
-def _fetch_with_retry(url: str, headers: dict, max_retries: int = 3, timeout: int = 20):
-    """Fetch URL with retry logic and exponential backoff."""
+def _fetch_with_retry(
+    url: str, headers: dict, max_retries: int = 3, timeout: int = 20
+) -> requests.Response:
+    """Fetch URL with retry logic and exponential backoff.
+
+    Raises:
+        requests.exceptions.RequestException: If all retries fail
+    """
     for attempt in range(max_retries):
         try:
             response = requests.get(url, headers=headers, timeout=timeout)
@@ -45,7 +51,9 @@ def _fetch_with_retry(url: str, headers: dict, max_retries: int = 3, timeout: in
                 time.sleep(wait_time)
             else:
                 raise
-    return None
+    # This line should never be reached as we raise on the last attempt,
+    # but needed for type checker
+    raise requests.exceptions.RequestException("All retries exhausted")
 
 
 def _get_cache_key(lat: str, lon: str) -> str:
@@ -199,7 +207,9 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
                 except ValueError:
                     hours = 1
             for h in range(hours):
-                hour_key = (start_time + timedelta(hours=h)).replace(minute=0, second=0, microsecond=0)
+                hour_key = (start_time + timedelta(hours=h)).replace(
+                    minute=0, second=0, microsecond=0
+                )
                 apparent_temp_by_hour[hour_key] = feels_like_f
 
     # Process hourly data
@@ -227,30 +237,36 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
                 for keyword in ["snow", "flurries", "sleet", "wintry", "freezing"]
             )
             or snow_amount > 0
-            or (temp <= 32 and (precip_amount > 0 or precip_prob > 0))  # Any precip below freezing is snow
+            or (
+                temp <= 32 and (precip_amount > 0 or precip_prob > 0)
+            )  # Any precip below freezing is snow
         )
 
         # Get sunrise/sunset for nighttime detection
         start_eastern = start_time.astimezone(EASTERN)
-        sunrise, sunset = get_sunrise_sunset(float(data["lat"]), float(data["lon"]), start_eastern.date())
+        sunrise, sunset = get_sunrise_sunset(
+            float(data["lat"]), float(data["lon"]), start_eastern.date()
+        )
         is_night = start_eastern < sunrise or start_eastern >= sunset
 
         # Get feels-like temperature (apparent temperature)
         feels_like = apparent_temp_by_hour.get(hour_key, temp)
 
-        hourly.append({
-            "time": start_time.isoformat(),
-            "time_eastern": start_eastern.isoformat(),
-            "hour": start_eastern.hour,
-            "day_name": start_eastern.strftime("%a"),  # "Fri", "Sat", etc.
-            "temp": period["temperature"],
-            "feels_like": feels_like,
-            "precip_prob": period.get("probabilityOfPrecipitation", {}).get("value", 0) or 0,
-            "precip_amount": precip_amount,
-            "is_snow": is_snowy,
-            "is_night": is_night,
-            "description": period.get("shortForecast", ""),
-        })
+        hourly.append(
+            {
+                "time": start_time.isoformat(),
+                "time_eastern": start_eastern.isoformat(),
+                "hour": start_eastern.hour,
+                "day_name": start_eastern.strftime("%a"),  # "Fri", "Sat", etc.
+                "temp": period["temperature"],
+                "feels_like": feels_like,
+                "precip_prob": period.get("probabilityOfPrecipitation", {}).get("value", 0) or 0,
+                "precip_amount": precip_amount,
+                "is_snow": is_snowy,
+                "is_night": is_night,
+                "description": period.get("shortForecast", ""),
+            }
+        )
 
         # Aggregate daily precipitation
         date_key = start_time.date().isoformat()
@@ -274,6 +290,8 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
         "current_feels_like": current_feels_like,
         "current_desc": current_desc,
         "hourly": hourly,
-        "daily_precip": {k: {"amount": v, "is_snow": daily_is_snow[k]} for k, v in daily_precip.items()},
+        "daily_precip": {
+            k: {"amount": v, "is_snow": daily_is_snow[k]} for k, v in daily_precip.items()
+        },
         "fetched_at": data.get("fetched_at"),
     }

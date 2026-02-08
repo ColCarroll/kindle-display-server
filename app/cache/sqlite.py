@@ -22,15 +22,18 @@ def _get_connection() -> sqlite3.Connection:
 
 def _init_tables(conn: sqlite3.Connection) -> None:
     """Initialize cache tables if they don't exist."""
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS cache (
             key TEXT PRIMARY KEY,
             data TEXT NOT NULL,
             created_at TEXT NOT NULL,
             expires_at TEXT NOT NULL
         )
-    """)
-    conn.execute("""
+    """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS weather_locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -39,18 +42,23 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             lon TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
-    """)
-    conn.execute("""
+    """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS strava_activities (
             activity_id INTEGER PRIMARY KEY,
             start_date TEXT NOT NULL,
             year INTEGER NOT NULL,
             data TEXT NOT NULL
         )
-    """)
-    conn.execute("""
+    """
+    )
+    conn.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_strava_year ON strava_activities(year)
-    """)
+    """
+    )
     conn.commit()
 
 
@@ -58,9 +66,7 @@ def get(key: str) -> dict[str, Any] | None:
     """Get a cached value by key, or None if expired/missing."""
     conn = _get_connection()
     try:
-        cursor = conn.execute(
-            "SELECT data, expires_at FROM cache WHERE key = ?", (key,)
-        )
+        cursor = conn.execute("SELECT data, expires_at FROM cache WHERE key = ?", (key,))
         row = cursor.fetchone()
         if not row:
             return None
@@ -122,9 +128,7 @@ def cleanup_expired() -> int:
     conn = _get_connection()
     try:
         now = datetime.utcnow().isoformat()
-        cursor = conn.execute(
-            "DELETE FROM cache WHERE expires_at < ?", (now,)
-        )
+        cursor = conn.execute("DELETE FROM cache WHERE expires_at < ?", (now,))
         conn.commit()
         return cursor.rowcount
     finally:
@@ -132,6 +136,7 @@ def cleanup_expired() -> int:
 
 
 # Weather locations management
+
 
 def get_weather_locations() -> list[dict[str, Any]]:
     """Get all weather locations."""
@@ -158,7 +163,8 @@ def add_weather_location(name: str, zip_code: str, lat: str, lon: str) -> int:
             (name, zip_code, lat, lon, now),
         )
         conn.commit()
-        return cursor.lastrowid
+        # lastrowid can be None if no row was inserted, but we just did an INSERT
+        return cursor.lastrowid or 0
     finally:
         conn.close()
 
@@ -167,9 +173,7 @@ def delete_weather_location(location_id: int) -> bool:
     """Delete a weather location by ID. Returns True if deleted."""
     conn = _get_connection()
     try:
-        cursor = conn.execute(
-            "DELETE FROM weather_locations WHERE id = ?", (location_id,)
-        )
+        cursor = conn.execute("DELETE FROM weather_locations WHERE id = ?", (location_id,))
         conn.commit()
         return cursor.rowcount > 0
     finally:
@@ -178,13 +182,13 @@ def delete_weather_location(location_id: int) -> bool:
 
 # Strava activity caching
 
+
 def get_cached_strava_activities(year: int) -> list[dict[str, Any]]:
     """Get all cached Strava activities for a given year."""
     conn = _get_connection()
     try:
         cursor = conn.execute(
-            "SELECT data FROM strava_activities WHERE year = ? ORDER BY start_date",
-            (year,)
+            "SELECT data FROM strava_activities WHERE year = ? ORDER BY start_date", (year,)
         )
         return [json.loads(row["data"]) for row in cursor.fetchall()]
     finally:
@@ -196,8 +200,7 @@ def get_latest_strava_activity_date(year: int) -> str | None:
     conn = _get_connection()
     try:
         cursor = conn.execute(
-            "SELECT MAX(start_date) as max_date FROM strava_activities WHERE year = ?",
-            (year,)
+            "SELECT MAX(start_date) as max_date FROM strava_activities WHERE year = ?", (year,)
         )
         row = cursor.fetchone()
         return row["max_date"] if row else None
@@ -243,9 +246,7 @@ def clear_strava_cache(year: int | None = None) -> int:
     conn = _get_connection()
     try:
         if year:
-            cursor = conn.execute(
-                "DELETE FROM strava_activities WHERE year = ?", (year,)
-            )
+            cursor = conn.execute("DELETE FROM strava_activities WHERE year = ?", (year,))
         else:
             cursor = conn.execute("DELETE FROM strava_activities")
         conn.commit()

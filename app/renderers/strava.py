@@ -224,7 +224,10 @@ def render_strava(ax: Axes):
     days_elapsed = seconds_elapsed / 86400  # Fractional days
 
     days_in_year = (
-        366 if now_eastern.year % 4 == 0 and (now_eastern.year % 100 != 0 or now_eastern.year % 400 == 0) else 365
+        366
+        if now_eastern.year % 4 == 0
+        and (now_eastern.year % 100 != 0 or now_eastern.year % 400 == 0)
+        else 365
     )
 
     # Calculate precise time remaining in year using seconds (Eastern time)
@@ -266,9 +269,9 @@ def render_strava(ax: Axes):
             if activity["type"] != "Run":
                 continue
 
-            activity_date_utc = datetime.strptime(activity["start_date"], "%Y-%m-%dT%H:%M:%SZ").replace(
-                tzinfo=UTC
-            )
+            activity_date_utc = datetime.strptime(
+                activity["start_date"], "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=UTC)
             # Convert to Eastern for local time comparison
             activity_date_eastern = activity_date_utc.astimezone(EASTERN)
 

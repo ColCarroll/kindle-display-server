@@ -24,8 +24,14 @@ EASTERN = ZoneInfo("America/New_York")
 logger = logging.getLogger(__name__)
 
 
-def _fetch_with_retry(url, headers, max_retries=3, timeout=20):
-    """Fetch URL with retry logic and exponential backoff."""
+def _fetch_with_retry(
+    url: str, headers: dict, max_retries: int = 3, timeout: int = 20
+) -> requests.Response:
+    """Fetch URL with retry logic and exponential backoff.
+
+    Raises:
+        requests.exceptions.RequestException: If all retries fail
+    """
     for attempt in range(max_retries):
         try:
             response = requests.get(url, headers=headers, timeout=timeout)
@@ -49,7 +55,9 @@ def _fetch_with_retry(url, headers, max_retries=3, timeout=20):
                 time.sleep(wait_time)
             else:
                 raise
-    return None
+    # This line should never be reached as we raise on the last attempt,
+    # but needed for type checker
+    raise requests.exceptions.RequestException("All retries exhausted")
 
 
 def fetch_weather_data(lat=None, lon=None):
