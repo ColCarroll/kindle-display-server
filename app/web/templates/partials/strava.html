@@ -41,7 +41,7 @@
                     <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}"/>
                 </clipPath>
             </defs>
-            <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}" fill="#fafafa"/>
+            <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}" fill="none"/>
 
             <!-- Pace target lines (x-axis goes to days_elapsed, not full year) - clipped to chart area -->
             {% for pace in data.pace_lines %}
@@ -140,7 +140,7 @@
                     <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}"/>
                 </clipPath>
             </defs>
-            <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}" fill="#fafafa"/>
+            <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}" fill="none"/>
 
             <!-- Elevation pace target lines -->
             {% for pace in data.elevation_pace_lines %}
@@ -340,7 +340,7 @@
 
 @media (prefers-color-scheme: dark) {
     .detrended-chart rect {
-        fill: #252525;
+        fill: none;
     }
     .detrended-chart text {
         fill: #ccc;
