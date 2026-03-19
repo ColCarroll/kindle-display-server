@@ -242,7 +242,7 @@
 
 .runs-week-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 0.5rem;
     margin-top: 1.5rem;
 }
@@ -253,6 +253,8 @@
     border-radius: 4px;
     padding: 0.5rem;
     background: #fafafa;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .run-day.rest-day {
@@ -318,8 +320,15 @@
 }
 
 .run-day-stats {
-    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.4rem;
+    margin-top: 0.25rem;
     font-size: 0.85rem;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .run-distance {

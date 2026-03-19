@@ -151,6 +151,9 @@
     padding: 0.2rem 0.25rem;
     font-size: 0.8rem;
     line-height: 1.3;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 /* Strava styles */
