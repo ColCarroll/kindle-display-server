@@ -198,7 +198,6 @@
     </div>
 
     <!-- Week grid (Monday-Sunday) -->
-    <div class="runs-week-grid-scroll">
     <div class="runs-week-grid">
         {% for day in data.last_7_days %}
         <div class="run-day {% if day.run %}has-run{% endif %}{% if day.run and day.run.is_last_week %} last-week{% endif %}{% if not day.run and not day.is_future %}rest-day{% endif %}{% if day.is_today %} today{% endif %}{% if day.is_future and not day.run %} future{% endif %}">
@@ -224,7 +223,6 @@
         </div>
         {% endfor %}
     </div>
-    </div>
 </div>
 
 <style>
@@ -242,17 +240,11 @@
     height: auto;
 }
 
-.runs-week-grid-scroll {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    margin-top: 1.5rem;
-}
-
 .runs-week-grid {
     display: grid;
-    grid-template-columns: repeat(7, minmax(100px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 0.5rem;
-    min-width: 100%;
+    margin-top: 1.5rem;
 }
 
 .run-day {
