@@ -14,9 +14,6 @@
         <span class="run-distance">{{ run.distance_mi }}mi</span>
         <span class="run-pace">{{ run.pace }}/mi</span>
     </div>
-    <div class="shoe-stripes-right">
-        {% for c in stripes | reverse %}<div class="shoe-stripe" style="background: {{ c }}"></div>{% endfor %}
-    </div>
 </div>
 {% else %}
 <div class="run-day-stats"
