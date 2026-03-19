@@ -189,11 +189,12 @@
     {% endif %}
 
     <!-- Weekly stats -->
-    <div class="strava-stats">
+    <div class="strava-stats" style="justify-content: space-between; align-items: flex-end;">
         <div class="strava-stat">
             <div class="strava-stat-value">{{ data.weekly_distance_mi }}</div>
             <div class="strava-stat-label">miles (7 days)</div>
         </div>
+        <a href="/shoes" class="strava-stat-label" style="text-decoration: none;">Shoes</a>
     </div>
 
     <!-- Week grid (Monday-Sunday) -->
@@ -210,11 +211,10 @@
                 {% else %}
                 <div class="run-map-placeholder"></div>
                 {% endif %}
-                <div class="run-day-stats">
-                    <span class="run-distance">{{ day.run.distance_mi }}mi</span>
-                    <span class="run-pace">{{ day.run.pace }}/mi</span>
-                </div>
             </a>
+            {% set shoe = shoe_assignments.get(day.run.id) %}
+            {% set run = day.run %}
+            {% include "partials/shoe_banner.html" %}
             {% else %}
             <div class="run-day-content rest">
                 <div class="rest-indicator">—</div>

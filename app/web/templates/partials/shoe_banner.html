@@ -1,0 +1,32 @@
+{% if shoe %}
+{% set stripes = shoe.stripe_colors %}
+<div class="shoe-banner"
+     style="background: {{ shoe.bg_color }}; color: {{ shoe.text_color }}"
+     hx-post="/partials/strava/run/{{ run.id }}/shoe/cycle"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-vals='{"distance_mi": "{{ run.distance_mi }}", "pace": "{{ run.pace }}"}'
+     title="{{ shoe.name }}">
+    <div class="shoe-stripes-left">
+        {% for c in stripes %}<div class="shoe-stripe" style="background: {{ c }}"></div>{% endfor %}
+    </div>
+    <div class="shoe-banner-stats">
+        <span class="run-distance">{{ run.distance_mi }}mi</span>
+        <span class="run-pace">{{ run.pace }}/mi</span>
+    </div>
+    <div class="shoe-stripes-right">
+        {% for c in stripes | reverse %}<div class="shoe-stripe" style="background: {{ c }}"></div>{% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="run-day-stats"
+     hx-post="/partials/strava/run/{{ run.id }}/shoe/cycle"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-vals='{"distance_mi": "{{ run.distance_mi }}", "pace": "{{ run.pace }}"}'
+     title="Click to assign shoe"
+     style="cursor: pointer">
+    <span class="run-distance">{{ run.distance_mi }}mi</span>
+    <span class="run-pace">{{ run.pace }}/mi</span>
+</div>
+{% endif %}

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Shoe Settings{% endblock %}
+{% block header %}Shoe Settings{% endblock %}
+
+{% block content %}
+<section class="dashboard-section">
+    <p style="font-size: 0.85em; font-style: italic; margin-top: -1rem;"><a href="/">← Dashboard</a></p>
+    {% if sync_status %}
+    <p class="sync-status {% if sync_status == 'error' %}sync-error{% endif %}">
+        {% if sync_status == 'error' %}Could not reach Strava — check credentials.{% else %}{{ sync_status }}{% endif %}
+    </p>
+    {% endif %}
+
+    <div class="shoes-actions">
+        <form method="POST" action="/shoes/sync">
+            <button type="submit">Sync from Strava</button>
+        </form>
+        {% if not pending_count %}
+        <span class="synced-status">✓ All assignments synced to Strava</span>
+        {% else %}
+        <span class="synced-status" style="color: #888;">{{ pending_count }} assignment{{ 's' if pending_count != 1 }} pending — will sync overnight</span>
+        {% endif %}
+    </div>
+
+    {% if not shoes %}
+    <p>No shoes synced yet. Click "Sync Shoes from Strava" to import your gear.</p>
+    {% else %}
+    <div class="shoes-grid">
+        {% for shoe in shoes %}
+        {% include "partials/shoe_card.html" %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+
+<style>
+.shoes-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.sync-status {
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    color: #2a9d8f;
+}
+
+.sync-error {
+    color: #e63946;
+}
+
+.synced-status {
+    font-size: 0.9rem;
+    color: #2a9d8f;
+}
+
+.shoe-info-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.shoes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.5rem;
+}
+
+.shoe-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.shoe-card.shoe-retired {
+    opacity: 0.6;
+}
+
+.shoe-banner-preview {
+    border-radius: 0;
+    min-height: 3rem;
+    pointer-events: none;
+}
+
+.shoe-info {
+    padding: 0.75rem 1rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.9rem;
+}
+
+.shoe-mileage {
+    color: #888;
+    font-size: 0.8rem;
+}
+
+.retired-badge {
+    font-size: 0.75rem;
+    background: #888;
+    color: white;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    display: inline-block;
+    width: fit-content;
+}
+
+.shoe-style-form {
+    padding: 0.75rem 1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    border-top: 1px solid #e0e0e0;
+}
+
+.style-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.style-row label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+}
+
+.style-row input[type="color"] {
+    width: 32px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.shoe-style-form button {
+    align-self: flex-start;
+}
+
+@media (prefers-color-scheme: dark) {
+    .shoe-card {
+        border-color: #444;
+    }
+    .shoe-style-form {
+        border-top-color: #444;
+    }
+    .shoe-mileage {
+        color: #999;
+    }
+}
+</style>
+{% endblock %}

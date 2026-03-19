@@ -273,6 +273,64 @@ def fetch_athlete_stats(use_cache: bool = True) -> dict | None:
         return None
 
 
+def fetch_athlete_gear(use_cache: bool = True) -> list[dict] | None:
+    """Fetch athlete gear (shoes) from Strava via the athlete endpoint."""
+    cache_key = "strava:gear"
+
+    if use_cache:
+        cached = cache.get(cache_key)
+        if cached is not None and isinstance(cached, list):
+            return cached
+
+    access_token = _refresh_access_token()
+    if not access_token:
+        return None
+
+    try:
+        url = "https://www.strava.com/api/v3/athlete"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        athlete = response.json()
+        shoes: list[dict] = athlete.get("shoes", [])
+        cache.set(cache_key, shoes, 3600)
+        return shoes
+    except Exception as e:
+        logger.error(f"Failed to fetch athlete gear: {e}")
+        return None
+
+
+def push_activity_gear(activity_id: int, gear_id: str) -> bool:
+    """Set the gear (shoe) on a Strava activity. Returns True on success."""
+    access_token = _refresh_access_token()
+    if not access_token:
+        return False
+
+    url = f"https://www.strava.com/api/v3/activities/{activity_id}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    try:
+        response = requests.put(url, headers=headers, json={"gear_id": gear_id}, timeout=10)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update activity {activity_id} gear: {e}")
+        return False
+
+
+def sync_pending_shoe_assignments() -> int:
+    """Push all unsynced shoe assignments to Strava. Returns count of successful syncs."""
+    pending = cache.get_unsynced_run_shoes()
+    synced = 0
+    for assignment in pending:
+        if push_activity_gear(assignment["activity_id"], assignment["shoe_strava_id"]):
+            cache.mark_run_shoe_synced(assignment["activity_id"])
+            synced += 1
+    if synced:
+        logger.info(f"Synced {synced} shoe assignment(s) to Strava")
+    return synced
+
+
 def fetch_activity_streams(activity_id: int) -> dict | None:
     """Fetch detailed activity stream data (lat/lng, altitude, etc).
 

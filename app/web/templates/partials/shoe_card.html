@@ -1,0 +1,52 @@
+{% set s = shoe.stripe_colors %}
+<div class="shoe-card {% if shoe.retired %}shoe-retired{% endif %}" id="shoe-card-{{ shoe.strava_id }}">
+    <!-- Banner preview -->
+    <div class="shoe-banner shoe-banner-preview"
+         style="background: {{ shoe.bg_color }}; color: {{ shoe.text_color }}">
+        <div class="shoe-stripes-left">
+            {% for c in s %}<div class="shoe-stripe" style="background: {{ c }}"></div>{% endfor %}
+        </div>
+        <div class="shoe-banner-stats">
+            <span class="run-distance">5.2mi</span>
+            <span class="run-pace">8:30/mi</span>
+        </div>
+        <div class="shoe-stripes-right">
+            {% for c in s | reverse %}<div class="shoe-stripe" style="background: {{ c }}"></div>{% endfor %}
+        </div>
+    </div>
+
+    <div class="shoe-info">
+        <div class="shoe-info-row">
+            <strong>{{ shoe.name }}</strong>
+            {% if shoe.retired %}<span class="retired-badge">Retired</span>{% endif %}
+        </div>
+        <span class="shoe-mileage">
+            {% if shoe.local_miles %}{{ shoe.local_miles }} mi logged here · {% endif %}{{ "%.0f"|format(shoe.distance_mi) }} mi on Strava
+        </span>
+    </div>
+
+    <form hx-post="/shoes/{{ shoe.strava_id }}/style"
+          hx-target="#shoe-card-{{ shoe.strava_id }}"
+          hx-swap="outerHTML"
+          hx-trigger="change"
+          class="shoe-style-form">
+        <div class="style-row">
+            <label>Background <input type="color" name="bg_color" value="{{ shoe.bg_color }}"></label>
+            <label>Text <input type="color" name="text_color" value="{{ shoe.text_color }}"></label>
+        </div>
+        <div class="style-row">
+            <label>
+                <input type="checkbox" name="use_stripe_1" {% if s | length > 0 %}checked{% endif %}>
+                Stripe 1 <input type="color" name="stripe_1" value="{{ s[0] if s | length > 0 else '#000000' }}">
+            </label>
+            <label>
+                <input type="checkbox" name="use_stripe_2" {% if s | length > 1 %}checked{% endif %}>
+                Stripe 2 <input type="color" name="stripe_2" value="{{ s[1] if s | length > 1 else '#000000' }}">
+            </label>
+            <label>
+                <input type="checkbox" name="use_stripe_3" {% if s | length > 2 %}checked{% endif %}>
+                Stripe 3 <input type="color" name="stripe_3" value="{{ s[2] if s | length > 2 else '#000000' }}">
+            </label>
+        </div>
+    </form>
+</div>
