@@ -32,9 +32,7 @@ async def strava_partial(request: Request, _user: str = Depends(require_auth)):
                 day["run"]["svg_path"] = polyline_to_svg_path(day["run"]["polyline"], 80, 80)
 
         # Fetch shoe assignments for this week's runs
-        activity_ids = [
-            day["run"]["id"] for day in data.get("last_7_days", []) if day.get("run")
-        ]
+        activity_ids = [day["run"]["id"] for day in data.get("last_7_days", []) if day.get("run")]
         shoe_assignments = cache.get_run_shoes_for_activities(activity_ids)
 
         return templates.TemplateResponse(

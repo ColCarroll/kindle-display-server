@@ -87,9 +87,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
     import contextlib
 
     with contextlib.suppress(Exception):
-        conn.execute(
-            "ALTER TABLE run_shoes ADD COLUMN synced_to_strava INTEGER NOT NULL DEFAULT 0"
-        )
+        conn.execute("ALTER TABLE run_shoes ADD COLUMN synced_to_strava INTEGER NOT NULL DEFAULT 0")
     with contextlib.suppress(Exception):
         conn.execute("ALTER TABLE run_shoes ADD COLUMN strava_shoe_id TEXT")
     conn.commit()
@@ -306,7 +304,9 @@ def get_shoes(include_retired: bool = False) -> list[dict[str, Any]]:
     """Get all shoes, optionally including retired ones."""
     conn = _get_connection()
     try:
-        query = "SELECT * FROM shoes" if include_retired else "SELECT * FROM shoes WHERE retired = 0"
+        query = (
+            "SELECT * FROM shoes" if include_retired else "SELECT * FROM shoes WHERE retired = 0"
+        )
         cursor = conn.execute(query + " ORDER BY name")
         rows = [dict(row) for row in cursor.fetchall()]
         for row in rows:
@@ -465,8 +465,6 @@ def mark_run_shoe_synced(activity_id: int) -> None:
         conn.commit()
     finally:
         conn.close()
-
-
 
 
 def get_run_shoes_for_activities(activity_ids: list[int]) -> dict[int, dict[str, Any] | None]:

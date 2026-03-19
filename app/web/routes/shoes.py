@@ -30,7 +30,11 @@ async def shoes_page(
     if msg == "strava_error":
         sync_status = "error"
     elif synced is not None:
-        sync_status = f"Synced {synced} shoe{'s' if synced != 1 else ''} from Strava." if synced else "No shoes found on Strava — add some at strava.com/settings/gear."
+        sync_status = (
+            f"Synced {synced} shoe{'s' if synced != 1 else ''} from Strava."
+            if synced
+            else "No shoes found on Strava — add some at strava.com/settings/gear."
+        )
     else:
         sync_status = None
     return templates.TemplateResponse(
@@ -44,7 +48,6 @@ async def shoes_page(
             "user_name": request.session.get("user_name"),
         },
     )
-
 
 
 @router.post("/shoes/sync")
