@@ -1,5 +1,6 @@
 """Weather partial route handlers."""
 
+import asyncio
 import logging
 
 import requests
@@ -74,16 +75,19 @@ async def weather_partial(
                     }
                 )
 
-        # Fetch weather for all locations
-        locations = []
-        for loc_config in location_configs:
-            weather = get_processed_weather(loc_config["lat"], loc_config["lon"])
+        # Fetch weather for all locations in parallel
+        async def _fetch_one(loc_config):
+            weather = await asyncio.to_thread(
+                get_processed_weather, loc_config["lat"], loc_config["lon"]
+            )
             if weather:
                 weather["location_id"] = loc_config.get("id")
-                # Use custom name if provided
                 if loc_config.get("custom_name"):
                     weather["city"] = loc_config["custom_name"]
-                locations.append(weather)
+            return weather
+
+        results = await asyncio.gather(*[_fetch_one(lc) for lc in location_configs])
+        locations = [w for w in results if w is not None]
 
         if not locations:
             return templates.TemplateResponse(
@@ -134,8 +138,8 @@ async def add_location(
 ):
     """Add a new weather location."""
     logger.info(f"Adding location: name={name}, zip_code={zip_code}")
-    # Geocode the zip code
-    coords = geocode_zip(zip_code)
+    # Geocode the zip code (run in thread to avoid blocking event loop)
+    coords = await asyncio.to_thread(geocode_zip, zip_code)
     if not coords:
         # Return error message that HTMX can display
         return HTMLResponse(

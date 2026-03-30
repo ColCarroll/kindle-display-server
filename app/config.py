@@ -70,6 +70,7 @@ WEB_BASE_URL = os.getenv("WEB_BASE_URL", "http://localhost:8000")
 # Cache settings
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "data")
 WEATHER_CACHE_TTL = 15 * 60  # 15 minutes
+WEATHER_PROCESSED_CACHE_TTL = 5 * 60  # 5 minutes (matches HTMX refresh interval)
 CALENDAR_CACHE_TTL = 5 * 60  # 5 minutes
 STRAVA_CACHE_TTL = 10 * 60  # 10 minutes
 STRAVA_STATS_CACHE_TTL = 60 * 60  # 1 hour

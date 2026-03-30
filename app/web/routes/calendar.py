@@ -1,5 +1,7 @@
 """Calendar partial route handlers."""
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -15,7 +17,7 @@ templates = Jinja2Templates(directory="app/web/templates")
 async def calendar_partial(request: Request, _user: str = Depends(require_auth)):
     """Calendar partial for HTMX loading."""
     try:
-        data = get_events_by_day()
+        data = await asyncio.to_thread(get_events_by_day)
 
         return templates.TemplateResponse(
             "partials/calendar.html",

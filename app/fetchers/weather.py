@@ -1,5 +1,6 @@
 """Weather data fetcher with caching."""
 
+import functools
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def _fetch_with_retry(
-    url: str, headers: dict, max_retries: int = 3, timeout: int = 20
+    url: str, headers: dict, max_retries: int = 2, timeout: int = 10
 ) -> requests.Response:
     """Fetch URL with retry logic and exponential backoff.
 
@@ -61,8 +62,12 @@ def _get_cache_key(lat: str, lon: str) -> str:
     return f"weather:{lat}:{lon}"
 
 
+@functools.lru_cache(maxsize=64)
 def get_sunrise_sunset(lat: float, lon: float, date) -> tuple[datetime, datetime]:
-    """Calculate sunrise and sunset times for a given location and date."""
+    """Calculate sunrise and sunset times for a given location and date.
+
+    Memoized by (lat, lon, date) — reduces ~120 astral calculations to ~6 per call.
+    """
     location = LocationInfo(latitude=lat, longitude=lon)
     s = sun(location.observer, date=date, tzinfo=EASTERN)
     return s["sunrise"], s["sunset"]
@@ -144,6 +149,11 @@ def fetch_weather_data(
         return None
 
 
+def _get_processed_cache_key(lat: str, lon: str) -> str:
+    """Generate cache key for processed weather data."""
+    return f"weather_processed:{lat}:{lon}"
+
+
 def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dict[str, Any] | None:
     """Get weather data processed for web display.
 
@@ -154,6 +164,18 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
         - hourly: List of hourly forecasts with temp, precip, time
         - daily_precip: Dictionary of daily precipitation totals
     """
+    if lat is None:
+        lat = config.WEATHER_LAT_1
+    if lon is None:
+        lon = config.WEATHER_LON_1
+
+    # Check processed cache first
+    processed_key = _get_processed_cache_key(lat, lon)
+    cached_processed = cache.get(processed_key)
+    if cached_processed:
+        logger.info(f"Using cached processed weather for {lat},{lon}")
+        return cached_processed
+
     data = fetch_weather_data(lat, lon)
     if not data:
         return None
@@ -282,7 +304,7 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
     current_feels_like = hourly[0]["feels_like"] if hourly else None
     current_desc = hourly[0]["description"] if hourly else None
 
-    return {
+    result = {
         "city": data["city"],
         "lat": data["lat"],
         "lon": data["lon"],
@@ -295,3 +317,8 @@ def get_processed_weather(lat: str | None = None, lon: str | None = None) -> dic
         },
         "fetched_at": data.get("fetched_at"),
     }
+
+    # Cache the processed result
+    cache.set(processed_key, result, config.WEATHER_PROCESSED_CACHE_TTL)
+
+    return result

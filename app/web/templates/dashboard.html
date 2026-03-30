@@ -10,7 +10,17 @@
          hx-get="/partials/weather"
          hx-trigger="load, every 5m"
          hx-swap="innerHTML">
-        <span class="loading"></span> Loading weather...
+        <!-- Skeleton placeholder matching 2-location weather layout -->
+        <div class="weather-skeleton">
+            {% for _ in range(2) %}
+            <div class="skeleton-location">
+                <div class="skeleton-line skeleton-title"></div>
+                <div class="skeleton-line skeleton-subtitle"></div>
+                <div class="skeleton-chart"></div>
+            </div>
+            {% if not loop.last %}<hr>{% endif %}
+            {% endfor %}
+        </div>
     </div>
 </section>
 

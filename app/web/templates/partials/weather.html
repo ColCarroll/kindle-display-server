@@ -5,7 +5,7 @@
     {% for location in locations %}
     <div class="weather-location">
         <div class="weather-location-header">
-            <h3>{{ location.city }}</h3>
+            <h3>{% if location.city == "Home" %}<a href="/air-quality" class="location-airq-link">{{ location.city }}</a>{% else %}{{ location.city }}{% endif %}</h3>
             {% if location.location_id %}
             <button class="delete-location-btn"
                     hx-delete="/weather/locations/{{ location.location_id }}"
@@ -309,6 +309,15 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
 
 .weather-toggle-link:hover {
     color: #000;
+}
+
+.location-airq-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.location-airq-link:hover {
+    text-decoration: underline;
 }
 
 .feels-like {
