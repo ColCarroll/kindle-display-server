@@ -230,6 +230,7 @@ from(bucket: "airq")
   |> filter(fn: (r) => r._measurement == "airq")
   |> filter(fn: (r) => {field_filter})
   |> filter(fn: (r) => r._value > 0)
+  |> group(columns: ["_measurement", "_field", "location"])
   |> aggregateWindow(every: {opt["agg"]}, fn: mean, createEmpty: false)
   |> sort(columns: ["_time"])
 """
@@ -254,7 +255,7 @@ from(bucket: "airq")
         field: str, sensor: dict, sublabel: str, dasharray: str, decimals: int,
         transform=None,
     ) -> tuple[dict, list[float]]:
-        raw_pts = raw.get(field, {}).get(sensor["name"], [])
+        raw_pts = sorted(raw.get(field, {}).get(sensor["name"], []), key=lambda tv: tv[0])
         pts = [(t, transform(v)) for t, v in raw_pts] if transform else raw_pts
         vals = [v for _, v in pts]
         series = {
