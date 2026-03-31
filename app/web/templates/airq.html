@@ -80,9 +80,14 @@
         <text x="{{ mx }}" y="{{ cb + 16 }}" font-size="11" fill="#ccc" text-anchor="middle">{{ marker.label }}</text>
         {% endfor %}
 
-        {# Series polylines — one <polyline> per continuous segment #}
+        {# Series polylines — one <polyline> per continuous segment; dots for single points #}
         {% for s in metric.series %}
         {% for segment in s.segments %}
+        {% if segment | length == 1 %}
+        <circle cx="{{ cl + segment[0][0] * cw }}"
+                cy="{{ ct + ch - (segment[0][1] - metric.min_val) / metric.val_range * ch }}"
+                r="2.5" fill="{{ s.color }}"/>
+        {% else %}
         <polyline
             points="{% for xf, v in segment %}{{ cl + xf * cw }},{{ ct + ch - (v - metric.min_val) / metric.val_range * ch }} {% endfor %}"
             fill="none"
@@ -91,6 +96,7 @@
             stroke-linejoin="round"
             stroke-linecap="round"
             {% if s.dasharray %}stroke-dasharray="{{ s.dasharray }}"{% endif %}/>
+        {% endif %}
         {% endfor %}
         {% endfor %}
 
