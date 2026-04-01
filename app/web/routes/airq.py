@@ -316,15 +316,8 @@ from(bucket: "airq")
                 auto_floor = sorted_bands[-1]["lo"] + step * 0.25
                 max_floor = max(max_floor, auto_floor) if max_floor is not None else auto_floor
 
-        # Use 2nd/98th percentile for axis bounds so outliers don't blow the scale.
-        # Fall back to min/max for small datasets where percentiles aren't meaningful.
         sv = sorted(all_values)
-        n = len(sv)
-        if n >= 20:
-            data_lo = sv[int(n * 0.02)]
-            data_hi = sv[int(n * 0.98)]
-        else:
-            data_lo, data_hi = sv[0], sv[-1]
+        data_lo, data_hi = sv[0], sv[-1]
 
         lo = min_override if min_override is not None else data_lo
         hi = max(data_hi, max_floor) if max_floor is not None else data_hi
