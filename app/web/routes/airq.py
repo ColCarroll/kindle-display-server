@@ -3,6 +3,7 @@
 import asyncio
 import csv
 import logging
+import statistics
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -39,7 +40,7 @@ def _b(lo, hi, bg, label, tc):
 METRICS_CONFIG = [
     {
         "field": "co2", "label": "CO₂", "unit": "ppm", "decimals": 0,
-        "min_override": 400,
+        "min_override": 400, "max_cap": 2750,
         "bands": [
             _b(0,    800,  "#edf7ed", "Good",      "#2a7a2a"),
             _b(800,  1500, "#f7f5e6", "Moderate",  "#7a6a10"),
@@ -142,6 +143,28 @@ def _parse_ts(time_str: str) -> float:
 
 def _fmt(value: float, decimals: int) -> str:
     return f"{value:.{decimals}f}"
+
+
+def _remove_spikes(pts: list[tuple[str, float]], n_sigma: float = 4.0) -> list[tuple[str, float]]:
+    """Drop points that deviate more than n_sigma from the mean of their two neighbors."""
+    if len(pts) < 3:
+        return pts
+    vals = [v for _, v in pts]
+    diffs = [abs(vals[i + 1] - vals[i]) for i in range(len(vals) - 1)]
+    try:
+        scale = statistics.stdev(diffs) if len(diffs) > 1 else diffs[0]
+    except statistics.StatisticsError:
+        return pts
+    if scale == 0:
+        return pts
+    threshold = n_sigma * scale
+    result = [pts[0]]
+    for i in range(1, len(pts) - 1):
+        neighbor_mean = (vals[i - 1] + vals[i + 1]) / 2
+        if abs(vals[i] - neighbor_mean) <= threshold:
+            result.append(pts[i])
+    result.append(pts[-1])
+    return result
 
 
 def _to_segments(
@@ -257,6 +280,7 @@ from(bucket: "airq")
     ) -> tuple[dict, list[float]]:
         raw_pts = sorted(raw.get(field, {}).get(sensor["name"], []), key=lambda tv: tv[0])
         pts = [(t, transform(v)) for t, v in raw_pts] if transform else raw_pts
+        pts = _remove_spikes(pts)
         vals = [v for _, v in pts]
         series = {
             "sensor": sensor["display"],
@@ -278,6 +302,7 @@ from(bucket: "airq")
         *,
         min_override: float | None = None,
         max_floor: float | None = None,
+        max_cap: float | None = None,
         bands: list | None = None,
     ) -> dict | None:
         if not all_values:
@@ -306,7 +331,10 @@ from(bucket: "airq")
         pad = (hi - lo) * 0.08 if hi != lo else 1.0
         if min_override is None:
             lo -= pad
-        if max_floor is None or data_hi > max_floor:
+        if max_cap is not None:
+            # Hard ceiling: no upward padding beyond the cap
+            hi = min(hi + pad, max_cap)
+        elif max_floor is None or data_hi > max_floor:
             hi += pad
         val_range = hi - lo or 1.0
 
@@ -338,6 +366,11 @@ from(bucket: "airq")
                         s["latest_tc"] = band.get("text_color", "#aaa")
                         break
 
+            # Find x-fractions of points that exceed the axis ceiling (clipped by SVG)
+            s["clipped_fracs"] = [
+                xf for seg in s.get("segments", []) for xf, v in seg if v > hi
+            ]
+
         return {
             "label": label,
             "unit": unit,
@@ -363,6 +396,7 @@ from(bucket: "airq")
             cfg["label"], cfg["unit"], cfg["decimals"], series, all_values,
             min_override=cfg.get("min_override"),
             max_floor=cfg.get("max_floor"),
+            max_cap=cfg.get("max_cap"),
             bands=cfg.get("bands"),
         )
         if m:
