@@ -30,6 +30,7 @@
 
 <div class="airq-grid">
 {% for metric in metrics %}
+{% set metric_idx = loop.index %}
 <div class="airq-metric">
     <div class="airq-metric-header">
         <span class="airq-metric-label">{{ metric.label }}</span>
@@ -55,6 +56,12 @@
     {% set cb = ct + ch %}
 
     <svg viewBox="0 0 580 {{ cb + 22 }}" class="airq-chart">
+        <defs>
+            <clipPath id="clip-{{ metric_idx }}">
+                <rect x="{{ cl }}" y="{{ ct }}" width="{{ cw }}" height="{{ ch }}"/>
+            </clipPath>
+        </defs>
+
         {# Reference bands (e.g. VOC quality zones) — rendered first, behind everything #}
         {% for band in metric.bands %}
         <rect x="{{ cl }}" y="{{ ct + band.y_top_frac * ch }}"
@@ -86,7 +93,8 @@
         {% if segment | length == 1 %}
         <circle cx="{{ cl + segment[0][0] * cw }}"
                 cy="{{ ct + ch - (segment[0][1] - metric.min_val) / metric.val_range * ch }}"
-                r="2.5" fill="{{ s.color }}"/>
+                r="2.5" fill="{{ s.color }}"
+                clip-path="url(#clip-{{ metric_idx }})"/>
         {% else %}
         <polyline
             points="{% for xf, v in segment %}{{ cl + xf * cw }},{{ ct + ch - (v - metric.min_val) / metric.val_range * ch }} {% endfor %}"
@@ -95,6 +103,7 @@
             stroke-width="1.5"
             stroke-linejoin="round"
             stroke-linecap="round"
+            clip-path="url(#clip-{{ metric_idx }})"
             {% if s.dasharray %}stroke-dasharray="{{ s.dasharray }}"{% endif %}/>
         {% endif %}
         {% endfor %}
