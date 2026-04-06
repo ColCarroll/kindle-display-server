@@ -5,6 +5,7 @@ import csv
 import logging
 import statistics
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import requests
 from fastapi import APIRouter, Depends, Query, Request
@@ -14,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from app.web.auth import require_auth
 
 logger = logging.getLogger(__name__)
+TZ_BOSTON = ZoneInfo("America/New_York")
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/web/templates")
@@ -195,35 +197,35 @@ def _to_segments(
 def _compute_x_markers(
     t_start: datetime, t_end: datetime, t_start_s: float, t_span: float, range_key: str,
 ) -> list[dict]:
-    """Generate x-axis tick marks appropriate for the selected time range."""
+    """Generate x-axis tick marks in Boston local time."""
     markers = []
+    # Work in local time for alignment and labeling
+    t_start_local = t_start.astimezone(TZ_BOSTON)
 
     if range_key == "1h":
         interval = timedelta(minutes=15)
-        # Align to 15-min boundary
-        m = (t_start.minute // 15 + 1) * 15
-        current = t_start.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=m)
+        m = (t_start_local.minute // 15 + 1) * 15
+        current = t_start_local.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=m)
         def label(dt: datetime) -> str:
-            return dt.strftime("%H:%M")
+            return dt.astimezone(TZ_BOSTON).strftime("%H:%M")
     elif range_key == "24h":
         interval = timedelta(hours=6)
-        # Align to 6h boundary
-        h = (t_start.hour // 6 + 1) * 6
-        current = t_start.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=h)
+        h = (t_start_local.hour // 6 + 1) * 6
+        current = t_start_local.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=h)
         def label(dt: datetime) -> str:
-            return dt.strftime("%H:%M")
+            return dt.astimezone(TZ_BOSTON).strftime("%H:%M")
     elif range_key == "7d":
         interval = timedelta(days=1)
-        d = t_start.date() + timedelta(days=1)
-        current = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+        d = t_start_local.date() + timedelta(days=1)
+        current = datetime(d.year, d.month, d.day, tzinfo=TZ_BOSTON)
         def label(dt: datetime) -> str:
-            return dt.strftime("%a")
+            return dt.astimezone(TZ_BOSTON).strftime("%a")
     else:  # 30d
         interval = timedelta(days=5)
-        d = t_start.date() + timedelta(days=1)
-        current = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+        d = t_start_local.date() + timedelta(days=1)
+        current = datetime(d.year, d.month, d.day, tzinfo=TZ_BOSTON)
         def label(dt: datetime) -> str:
-            return f"{dt.strftime('%b')} {dt.day}"
+            return f"{dt.astimezone(TZ_BOSTON).strftime('%b')} {dt.astimezone(TZ_BOSTON).day}"
 
     while current < t_end:
         x_frac = (current.timestamp() - t_start_s) / t_span
