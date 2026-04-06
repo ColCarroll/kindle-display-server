@@ -300,7 +300,6 @@ from(bucket: "airq")
         all_values: list[float],
         *,
         min_override: float | None = None,
-        max_floor: float | None = None,
         max_cap: float | None = None,
         bands: list | None = None,
     ) -> dict | None:
@@ -310,39 +309,15 @@ from(bucket: "airq")
         sv = sorted(all_values)
         data_lo, data_hi = sv[0], sv[-1]
 
-        # Set axis ceiling to show the band data_hi falls in, plus a peek into the next.
-        # Falls back to open-ended top band showing 25% of the last step.
-        if bands:
-            sorted_bands = sorted(bands, key=lambda b: b["lo"])
-            band_ceil = None
-            for i, band in enumerate(sorted_bands):
-                b_hi = band["hi"] if band["hi"] is not None else float("inf")
-                if band["lo"] <= data_hi < b_hi or i == len(sorted_bands) - 1:
-                    if band["hi"] is not None:
-                        peek_width = (sorted_bands[i + 1]["hi"] - band["hi"]) if (
-                            i + 1 < len(sorted_bands) and sorted_bands[i + 1]["hi"] is not None
-                        ) else (band["hi"] - band["lo"])
-                        band_ceil = band["hi"] + peek_width * 0.25
-                    elif len(sorted_bands) >= 2:
-                        # Open-ended top band: show 25% of the last step above the boundary
-                        step = sorted_bands[-1]["lo"] - sorted_bands[-2]["lo"]
-                        band_ceil = sorted_bands[-1]["lo"] + step * 0.25
-                    break
-            if band_ceil is not None:
-                max_floor = max(max_floor, band_ceil) if max_floor is not None else band_ceil
-
         lo = min_override if min_override is not None else data_lo
-        hi = max(data_hi, max_floor) if max_floor is not None else data_hi
+        hi = data_hi
         pad = (hi - lo) * 0.08 if hi != lo else 1.0
         if min_override is None:
             lo -= pad
         if max_cap is not None:
-            # Hard ceiling: no upward padding beyond the cap
             hi = min(hi + pad, max_cap)
         else:
-            # Only add upward padding if data exceeds the band-based floor
-            if max_floor is None or data_hi > max_floor:
-                hi += pad
+            hi += pad
         val_range = hi - lo or 1.0
 
         processed_bands = []
@@ -402,7 +377,6 @@ from(bucket: "airq")
         m = _build_metric(
             cfg["label"], cfg["unit"], cfg["decimals"], series, all_values,
             min_override=cfg.get("min_override"),
-            max_floor=cfg.get("max_floor"),
             max_cap=cfg.get("max_cap"),
             bands=cfg.get("bands"),
         )
