@@ -250,10 +250,9 @@ def fetch_airq_data(range_key: str = DEFAULT_RANGE) -> dict:
     query = f"""
 from(bucket: "airq")
   |> range(start: {flux_range})
-  |> filter(fn: (r) => r._measurement == "airq")
+  |> filter(fn: (r) => r._measurement == "airq" and r.source == "esphome")
   |> filter(fn: (r) => {field_filter})
   |> filter(fn: (r) => r._value > 0)
-  |> group(columns: ["_measurement", "_field", "location"])
   |> aggregateWindow(every: {opt["agg"]}, fn: mean, createEmpty: false)
   |> sort(columns: ["_time"])
 """
