@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio{% endblock %}
+{% block header %}Portfolio{% endblock %}
+
+{% block content %}
+<div class="pf-top">
+    <a href="/" class="pf-back">← Dashboard</a>
+    <div class="pf-range-toggle">
+        {% for key, opt in range_options.items() %}
+        <a href="/portfolio?range={{ key }}"
+           class="pf-range-btn{% if not custom_range and key == range %} active{% endif %}">{{ opt.label }}</a>
+        {% endfor %}
+        <details class="pf-custom-range">
+            <summary class="pf-range-btn{% if custom_range %} active{% endif %}">Custom</summary>
+            <form class="pf-date-form" method="get" action="/portfolio">
+                <input type="date" name="start" value="{{ start }}" max="{{ today }}">
+                <span>–</span>
+                <input type="date" name="end" value="{{ end }}" max="{{ today }}">
+                <button type="submit">Go</button>
+            </form>
+        </details>
+    </div>
+</div>
+
+{% if not has_data %}
+<p class="pf-empty">No portfolio data found for this range.</p>
+
+{% else %}
+
+<div class="pf-summary">
+    <div class="pf-value">{{ current_value }}</div>
+    {% if perf_pct is not none %}
+    <div class="pf-perf {% if perf_positive %}pf-pos{% else %}pf-neg{% endif %}">
+        {{ perf_abs }}&ensp;({{ perf_pct }})
+    </div>
+    {% endif %}
+</div>
+
+{# ── Main SVG chart ── #}
+<svg viewBox="0 0 {{ svg_w }} {{ svg_h }}" class="pf-chart" role="img" aria-label="Portfolio value chart">
+    <defs>
+        <clipPath id="pf-clip">
+            <rect x="{{ CL }}" y="{{ CT }}" width="{{ CW }}" height="{{ CH }}"/>
+        </clipPath>
+        <linearGradient id="pf-fill-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.12"/>
+            <stop offset="100%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.01"/>
+        </linearGradient>
+    </defs>
+
+    {# Gridlines & Y-axis labels #}
+    {% for m in y_markers %}
+    <line x1="{{ CL }}" y1="{{ m.y }}" x2="{{ CR }}" y2="{{ m.y }}"
+          stroke="#ebebeb" stroke-width="1"/>
+    <text x="{{ CL - 5 }}" y="{{ m.y + 4 }}" font-size="11" fill="#aaa" text-anchor="end">{{ m.label }}</text>
+    {% endfor %}
+
+    {# Start-of-range reference line #}
+    {% if perf_line_y %}
+    <line x1="{{ CL }}" y1="{{ perf_line_y }}" x2="{{ CR }}" y2="{{ perf_line_y }}"
+          stroke="#bbb" stroke-width="1" stroke-dasharray="4,3" clip-path="url(#pf-clip)"/>
+    {% endif %}
+
+    {# Fill under line #}
+    {% if fill_path %}
+    <path d="{{ fill_path }}" fill="url(#pf-fill-grad)" clip-path="url(#pf-clip)"/>
+    {% endif %}
+
+    {# Portfolio value line #}
+    {% if polyline %}
+    <polyline points="{{ polyline }}"
+              fill="none"
+              stroke="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}"
+              stroke-width="1.8"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              clip-path="url(#pf-clip)"/>
+    {% endif %}
+
+    {# X-axis border #}
+    <line x1="{{ CL }}" y1="{{ CB }}" x2="{{ CR }}" y2="{{ CB }}" stroke="#ddd" stroke-width="1"/>
+
+    {# X-axis date labels #}
+    {% for m in x_markers %}
+    <text x="{{ m.x }}" y="{{ CB + 14 }}" font-size="11" fill="#aaa" text-anchor="middle">{{ m.label }}</text>
+    {% endfor %}
+</svg>
+
+{# ── Daily changes table ── #}
+{% if daily_rows %}
+<div class="pf-section">
+    <table class="pf-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th class="pf-num">Value</th>
+                <th class="pf-num">Change</th>
+                <th class="pf-num">Change %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in daily_rows %}
+            <tr>
+                <td>{{ row.date }}</td>
+                <td class="pf-num">{{ row.value }}</td>
+                <td class="pf-num {% if row.positive %}pf-pos{% else %}pf-neg{% endif %}">{{ row.chg_abs }}</td>
+                <td class="pf-num {% if row.positive %}pf-pos{% else %}pf-neg{% endif %}">{{ row.chg_pct }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{# ── Holdings detail (expandable) ── #}
+{% if holdings %}
+<details class="pf-section pf-holdings-detail">
+    <summary class="pf-section-toggle">
+        Holdings &mdash; {{ holdings|length }} positions
+    </summary>
+    <table class="pf-table pf-holdings-table">
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th class="pf-num">Shares</th>
+                <th class="pf-num">Price</th>
+                <th class="pf-num">Value</th>
+                <th class="pf-num">% of Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for h in holdings %}
+            <tr>
+                <td class="pf-symbol">{{ h.symbol }}</td>
+                <td class="pf-num">{{ h.shares_fmt }}</td>
+                <td class="pf-num">{{ h.price_fmt }}</td>
+                <td class="pf-num">{{ h.value_fmt }}</td>
+                <td class="pf-num pf-muted">{{ h.pct_fmt }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</details>
+{% endif %}
+
+{# ── Account breakdown (expandable) ── #}
+{% if accounts %}
+<details class="pf-section pf-accounts-detail">
+    <summary class="pf-section-toggle">
+        Accounts &mdash; {{ accounts|length }} accounts
+    </summary>
+    <table class="pf-table">
+        <thead>
+            <tr>
+                <th>Account</th>
+                <th>Type</th>
+                <th>Owner</th>
+                <th class="pf-num">Value</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in accounts %}
+            <tr>
+                <td>{{ a.name }}</td>
+                <td class="pf-muted">{{ a.type }}</td>
+                <td class="pf-muted">{{ a.owner }}</td>
+                <td class="pf-num">{{ a.value_fmt }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</details>
+{% endif %}
+
+{% endif %}{# has_data #}
+{% endblock %}

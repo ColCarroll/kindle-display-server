@@ -343,3 +343,208 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
 }
+
+/* ── Portfolio dashboard ── */
+
+.pf-top {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.pf-back {
+    color: #666;
+    text-decoration: none;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.pf-range-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.pf-range-btn {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    color: #555;
+    text-decoration: none;
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    line-height: 1.6;
+}
+
+.pf-range-btn:hover,
+.pf-range-btn.active {
+    background: #333;
+    color: #fff;
+    border-color: #333;
+}
+
+.pf-custom-range {
+    position: relative;
+    list-style: none;
+}
+
+.pf-custom-range summary {
+    list-style: none;
+}
+
+.pf-custom-range summary::-webkit-details-marker { display: none; }
+
+.pf-custom-range[open] summary.pf-range-btn {
+    background: #333;
+    color: #fff;
+    border-color: #333;
+}
+
+.pf-date-form {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 0.6rem 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    z-index: 10;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.pf-date-form input[type="date"] {
+    font-size: 0.85rem;
+    padding: 0.15rem 0.3rem;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+
+.pf-date-form button {
+    font-size: 0.85rem;
+    padding: 0.2rem 0.6rem;
+    background: #333;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+/* Summary stats */
+
+.pf-summary {
+    margin-bottom: 0.5rem;
+}
+
+.pf-value {
+    font-size: 2rem;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+
+.pf-perf {
+    font-size: 1rem;
+    margin-top: 0.15rem;
+}
+
+.pf-pos { color: #2a7a2a; }
+.pf-neg { color: #c44; }
+.pf-muted { color: #888; }
+
+/* Chart */
+
+.pf-chart {
+    width: 100%;
+    max-width: 680px;
+    height: auto;
+    display: block;
+    margin: 0.75rem 0 1.5rem;
+}
+
+/* Sections */
+
+.pf-section {
+    margin-bottom: 1.5rem;
+}
+
+.pf-section-toggle {
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: #555;
+    user-select: none;
+    padding: 0.3rem 0;
+    list-style: none;
+}
+
+.pf-section-toggle::-webkit-details-marker { display: none; }
+
+.pf-section-toggle::before {
+    content: "▶ ";
+    font-size: 0.7em;
+    color: #aaa;
+}
+
+details[open] .pf-section-toggle::before {
+    content: "▼ ";
+}
+
+/* Tables */
+
+.pf-table {
+    width: 100%;
+    max-width: 680px;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
+.pf-table th {
+    border-bottom: 1px solid #ddd;
+    padding: 0.3rem 0.5rem;
+    text-align: left;
+    font-weight: 500;
+    color: #555;
+    white-space: nowrap;
+}
+
+.pf-table td {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.pf-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.pf-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.pf-symbol {
+    font-family: monospace;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.pf-empty {
+    color: #888;
+    font-style: italic;
+}
+
+@media (max-width: 600px) {
+    .pf-value { font-size: 1.5rem; }
+    .pf-table { font-size: 0.8rem; }
+}
