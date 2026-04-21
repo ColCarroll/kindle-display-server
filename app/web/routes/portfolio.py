@@ -103,7 +103,7 @@ def _fmt_signed(v: float, full: bool = True) -> str:
 @router.get("/portfolio", response_class=HTMLResponse)
 async def portfolio_page(
     request: Request,
-    range: str = Query(default=DEFAULT_RANGE),
+    time_range: str = Query(default=DEFAULT_RANGE, alias="range"),
     start: str = Query(default=None),
     end: str = Query(default=None),
     user=Depends(require_auth),  # noqa: B008
@@ -124,9 +124,9 @@ async def portfolio_page(
             f"stop: {(end_date + timedelta(days=1)).isoformat()}T00:00:00Z"
         )
     else:
-        if range not in RANGE_OPTIONS:
-            range = DEFAULT_RANGE
-        flux_range = f"start: {RANGE_OPTIONS[range]['flux']}"
+        if time_range not in RANGE_OPTIONS:
+            time_range = DEFAULT_RANGE
+        flux_range = f"start: {RANGE_OPTIONS[time_range]['flux']}"
         start_date = None
         end_date = None
 
@@ -309,7 +309,7 @@ from(bucket: "portfolio")
         request,
         "portfolio.html",
         {
-            "range": range,
+            "range": time_range,
             "custom_range": custom_range,
             "start": start or "",
             "end": end or today.isoformat(),
