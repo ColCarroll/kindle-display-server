@@ -268,40 +268,95 @@ from(bucket: "portfolio")
         )
     daily_rows = list(reversed(daily_rows))[:20]
 
-    # --- Current holdings ---
-    holdings: list[dict] = []
-    total_invested = 0.0
+    # --- Per-account day changes from InfluxDB ---
+    acct_day_changes: dict[str, dict] = {}
     try:
-        resp = requests.get(f"{PORTFOLIO_API}/portfolio/holdings", timeout=10)
-        resp.raise_for_status()
-        by_sym: dict[str, dict] = {}
-        for h in resp.json():
-            sym = h["symbol"]
-            if sym == "__USD__":
+        acct_query = """
+from(bucket: "portfolio")
+  |> range(start: -3d)
+  |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value")
+  |> aggregateWindow(every: 1d, fn: last, createEmpty: false)
+  |> sort(columns: ["_time"])
+"""
+        acct_rows = _query_influx(acct_query)
+        by_acct_ts: dict[str, list[tuple[date, float]]] = {}
+        for row in acct_rows:
+            acct_id = row.get("account_id", "")
+            if not acct_id:
                 continue
-            if sym not in by_sym:
-                by_sym[sym] = {"symbol": sym, "shares": 0.0, "value": 0.0, "price": h.get("price")}
-            by_sym[sym]["shares"] += h.get("shares") or 0
-            by_sym[sym]["value"] += h.get("value") or 0
-        holdings = sorted(by_sym.values(), key=lambda x: x["value"], reverse=True)
-        total_invested = sum(h["value"] for h in holdings)
-        for h in holdings:
-            h["value_fmt"] = _fmt_dollars_full(h["value"])
-            h["shares_fmt"] = f"{h['shares']:.3f}"
-            h["price_fmt"] = f"${h['price']:.2f}" if h.get("price") else "—"
-            h["pct_of_total"] = h["value"] / total_invested * 100 if total_invested else 0
-            h["pct_fmt"] = f"{h['pct_of_total']:.1f}%"
+            try:
+                t = _parse_ts(row["_time"])
+                v = float(row["_value"])
+                if acct_id not in by_acct_ts:
+                    by_acct_ts[acct_id] = []
+                by_acct_ts[acct_id].append((t.date(), v))
+            except (KeyError, ValueError):
+                continue
+        for acct_id, vals in by_acct_ts.items():
+            vals.sort()
+            if len(vals) >= 2:
+                prev_v, curr_v = vals[-2][1], vals[-1][1]
+                chg = curr_v - prev_v
+                pct = chg / prev_v * 100 if prev_v else 0.0
+            elif vals:
+                chg, pct = 0.0, 0.0
+            else:
+                continue
+            acct_day_changes[acct_id] = {"chg": chg, "pct": pct}
     except Exception as e:
-        logger.warning("Could not fetch holdings: %s", e)
+        logger.warning("Could not fetch account day changes: %s", e)
+
+    # Badge colours and abbreviations by account type
+    type_badge: dict[str, tuple[str, str]] = {
+        "checking": ("CHK", "#4285f4"),
+        "hysa": ("HYSA", "#1a73e8"),
+        "savings": ("SAV", "#1a73e8"),
+        "401k": ("401k", "#34a853"),
+        "403b": ("403b", "#2e7d32"),
+        "hsa": ("HSA", "#00897b"),
+        "taxable": ("BROK", "#f9ab00"),
+        "roth_ira": ("ROTH", "#9c27b0"),
+        "ira": ("IRA", "#7b1fa2"),
+        "other": ("—", "#9e9e9e"),
+    }
 
     # --- Account breakdown ---
     accounts: list[dict] = []
+    total_acct_value = 0.0
     try:
         resp = requests.get(f"{PORTFOLIO_API}/portfolio/accounts", timeout=10)
         resp.raise_for_status()
-        accounts = resp.json()
-        for a in accounts:
-            a["value_fmt"] = _fmt_dollars_full(a.get("value") or 0)
+        raw_accounts = resp.json()
+        total_acct_value = sum(a.get("value") or 0 for a in raw_accounts)
+        for a in raw_accounts:
+            v = a.get("value") or 0.0
+            acct_id = str(a.get("id", ""))
+            badge_label, badge_color = type_badge.get(
+                (a.get("type") or "other").lower(), ("—", "#9e9e9e")
+            )
+            day = acct_day_changes.get(acct_id, {})
+            chg = day.get("chg", None)
+            pct = day.get("pct", None)
+            accounts.append(
+                {
+                    "name": a.get("name", ""),
+                    "type": a.get("type", ""),
+                    "owner": a.get("owner", ""),
+                    "value": v,
+                    "value_fmt": _fmt_dollars_full(v),
+                    "badge_label": badge_label,
+                    "badge_color": badge_color,
+                    "pct_of_total": v / total_acct_value * 100 if total_acct_value else 0,
+                    "pct_fmt": f"{v / total_acct_value * 100:.1f}%" if total_acct_value else "—",
+                    "day_chg_abs": _fmt_signed(chg) if chg is not None else "—",
+                    "day_chg_pct": (f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%")
+                    if pct is not None
+                    else "—",
+                    "day_positive": (chg or 0) >= 0,
+                    "has_day_change": chg is not None,
+                }
+            )
+        accounts.sort(key=lambda x: x["value"], reverse=True)
     except Exception as e:
         logger.warning("Could not fetch accounts: %s", e)
 
@@ -337,7 +392,6 @@ from(bucket: "portfolio")
             "CB": CB,
             # Tables
             "daily_rows": daily_rows,
-            "holdings": holdings,
             "accounts": accounts,
             "today": today.isoformat(),
             "has_data": len(points) > 0,

@@ -87,9 +87,49 @@
     {% endfor %}
 </svg>
 
-{# ── Daily changes table ── #}
-{% if daily_rows %}
+{# ── Accounts table ── #}
+{% if accounts %}
 <div class="pf-section">
+    <table class="pf-table pf-accounts-table">
+        <thead>
+            <tr>
+                <th>Account</th>
+                <th>Owner</th>
+                <th class="pf-num">Day change</th>
+                <th class="pf-num">% of total</th>
+                <th class="pf-num">Value</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in accounts %}
+            <tr>
+                <td class="pf-acct-name-cell">
+                    <span class="pf-badge" style="background:{{ a.badge_color }}">{{ a.badge_label }}</span>
+                    <span class="pf-acct-name">{{ a.name }}</span>
+                </td>
+                <td class="pf-muted pf-owner">{{ a.owner }}</td>
+                <td class="pf-num pf-day-chg">
+                    {% if a.has_day_change %}
+                    <span class="{% if a.day_positive %}pf-pos{% else %}pf-neg{% endif %}">
+                        {{ a.day_chg_abs }}<br><small>{{ a.day_chg_pct }}</small>
+                    </span>
+                    {% else %}
+                    <span class="pf-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="pf-num pf-muted">{{ a.pct_fmt }}</td>
+                <td class="pf-num pf-acct-value">{{ a.value_fmt }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{# ── Daily changes table (collapsible) ── #}
+{% if daily_rows %}
+<details class="pf-section">
+    <summary class="pf-section-toggle">Daily changes</summary>
     <table class="pf-table">
         <thead>
             <tr>
@@ -106,66 +146,6 @@
                 <td class="pf-num">{{ row.value }}</td>
                 <td class="pf-num {% if row.positive %}pf-pos{% else %}pf-neg{% endif %}">{{ row.chg_abs }}</td>
                 <td class="pf-num {% if row.positive %}pf-pos{% else %}pf-neg{% endif %}">{{ row.chg_pct }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% endif %}
-
-{# ── Holdings detail (expandable) ── #}
-{% if holdings %}
-<details class="pf-section pf-holdings-detail">
-    <summary class="pf-section-toggle">
-        Holdings &mdash; {{ holdings|length }} positions
-    </summary>
-    <table class="pf-table pf-holdings-table">
-        <thead>
-            <tr>
-                <th>Symbol</th>
-                <th class="pf-num">Shares</th>
-                <th class="pf-num">Price</th>
-                <th class="pf-num">Value</th>
-                <th class="pf-num">% of Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for h in holdings %}
-            <tr>
-                <td class="pf-symbol">{{ h.symbol }}</td>
-                <td class="pf-num">{{ h.shares_fmt }}</td>
-                <td class="pf-num">{{ h.price_fmt }}</td>
-                <td class="pf-num">{{ h.value_fmt }}</td>
-                <td class="pf-num pf-muted">{{ h.pct_fmt }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</details>
-{% endif %}
-
-{# ── Account breakdown (expandable) ── #}
-{% if accounts %}
-<details class="pf-section pf-accounts-detail">
-    <summary class="pf-section-toggle">
-        Accounts &mdash; {{ accounts|length }} accounts
-    </summary>
-    <table class="pf-table">
-        <thead>
-            <tr>
-                <th>Account</th>
-                <th>Type</th>
-                <th>Owner</th>
-                <th class="pf-num">Value</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for a in accounts %}
-            <tr>
-                <td>{{ a.name }}</td>
-                <td class="pf-muted">{{ a.type }}</td>
-                <td class="pf-muted">{{ a.owner }}</td>
-                <td class="pf-num">{{ a.value_fmt }}</td>
             </tr>
             {% endfor %}
         </tbody>
