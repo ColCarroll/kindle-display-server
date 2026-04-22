@@ -434,11 +434,19 @@ from(bucket: "portfolio")
         daily_rows = list(reversed(daily_rows))[:20]
 
     # --- Per-account changes over the selected range from InfluxDB ---
+    # For 1D, use midnight UTC so the account baseline aligns with the midnight
+    # backfill used by the portfolio total (not yesterday's 8pm YNAB sync point).
+    if time_range == "1d" and not custom_range:
+        today_midnight = date.today().isoformat() + "T00:00:00Z"
+        acct_flux_range = f"start: {today_midnight}"
+    else:
+        acct_flux_range = flux_range
+
     acct_day_changes: dict[str, dict] = {}
     try:
         acct_query = f"""
 from(bucket: "portfolio")
-  |> range({flux_range})
+  |> range({acct_flux_range})
   |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value")
   |> aggregateWindow(every: {agg_window}, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
