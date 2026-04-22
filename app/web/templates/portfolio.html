@@ -59,8 +59,8 @@
             <rect x="{{ CL }}" y="{{ CT }}" width="{{ CW }}" height="{{ CH }}"/>
         </clipPath>
         <linearGradient id="pf-fill-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.12"/>
-            <stop offset="100%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.01"/>
+            <stop offset="0%" stop-color="{% if perf_positive %}#27ae60{% else %}#c44{% endif %}" stop-opacity="0.12"/>
+            <stop offset="100%" stop-color="{% if perf_positive %}#27ae60{% else %}#c44{% endif %}" stop-opacity="0.01"/>
         </linearGradient>
     </defs>
 
@@ -99,7 +99,7 @@
     {% if polyline %}
     <polyline points="{{ polyline }}"
               fill="none"
-              stroke="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}"
+              stroke="{% if perf_positive %}#27ae60{% else %}#c44{% endif %}"
               stroke-width="1.8"
               stroke-linejoin="round"
               stroke-linecap="round"
@@ -133,14 +133,8 @@
                     <span class="pf-group-arrow" id="pf-arrow-{{ g.key }}">▶</span>
                     {{ g.label }}
                 </td>
-                <td class="pf-num pf-day-chg">
-                    {% if g.has_change %}
-                    <span class="{% if g.chg_positive %}pf-pos{% else %}pf-neg{% endif %}">
-                        {{ g.chg_abs }} {{ g.chg_pct }}
-                    </span>
-                    {% else %}
-                    <span class="pf-muted">—</span>
-                    {% endif %}
+                <td class="pf-num pf-day-chg {% if g.has_change %}{% if g.chg_positive %}pf-pos{% else %}pf-neg{% endif %}{% else %}pf-muted{% endif %}">
+                    {% if g.has_change %}{{ g.chg_abs }} {{ g.chg_pct }}{% else %}—{% endif %}
                 </td>
                 <td class="pf-num pf-acct-value">{{ g.value_fmt }}</td>
             </tr>
@@ -151,14 +145,8 @@
                 style="display:none"
                 hx-get="{{ row_href }}" hx-target="#pf-content" hx-select="#pf-content" hx-swap="outerHTML" hx-push-url="true">
                 <td class="pf-sub-name">{{ a.name }}</td>
-                <td class="pf-num pf-day-chg">
-                    {% if a.has_change %}
-                    <span class="{% if a.chg_positive %}pf-pos{% else %}pf-neg{% endif %}">
-                        <span class="pf-chg-abs">{{ a.chg_abs }}<br></span><small>{{ a.chg_pct }}</small>
-                    </span>
-                    {% else %}
-                    <span class="pf-muted">—</span>
-                    {% endif %}
+                <td class="pf-num pf-day-chg {% if a.has_change %}{% if a.chg_positive %}pf-pos{% else %}pf-neg{% endif %}{% else %}pf-muted{% endif %}">
+                    {% if a.has_change %}{{ a.chg_abs }} {{ a.chg_pct }}{% else %}—{% endif %}
                 </td>
                 <td class="pf-num pf-acct-value">{{ a.value_fmt }}</td>
             </tr>

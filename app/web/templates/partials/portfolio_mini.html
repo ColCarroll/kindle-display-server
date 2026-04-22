@@ -15,8 +15,8 @@
                 <rect x="{{ MCL }}" y="{{ MCT }}" width="{{ MCR - MCL }}" height="{{ MCB - MCT }}"/>
             </clipPath>
             <linearGradient id="pf-mini-grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.12"/>
-                <stop offset="100%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.01"/>
+                <stop offset="0%" stop-color="{% if perf_positive %}#27ae60{% else %}#c44{% endif %}" stop-opacity="0.12"/>
+                <stop offset="100%" stop-color="{% if perf_positive %}#27ae60{% else %}#c44{% endif %}" stop-opacity="0.01"/>
             </linearGradient>
         </defs>
 
@@ -30,7 +30,7 @@
         <path d="{{ fill_path }}" fill="url(#pf-mini-grad)" clip-path="url(#pf-mini-clip)"/>
         <polyline points="{{ polyline }}"
                   fill="none"
-                  stroke="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}"
+                  stroke="{% if perf_positive %}#27ae60{% else %}#c44{% endif %}"
                   stroke-width="1.8"
                   stroke-linejoin="round"
                   stroke-linecap="round"

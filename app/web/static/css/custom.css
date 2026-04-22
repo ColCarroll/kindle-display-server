@@ -458,8 +458,8 @@
     margin-top: 0.15rem;
 }
 
-.pf-pos { color: #2a7a2a; }
-.pf-neg { color: #c44; }
+.pf-pos { color: #27ae60; }
+.pf-neg { color: #c0392b; }
 .pf-muted { color: #888; }
 
 @media (prefers-color-scheme: dark) {
