@@ -24,12 +24,12 @@ INFLUX_TOKEN = "airq-local-token"
 INFLUX_ORG = "home"
 PORTFOLIO_API = "http://koonti:8087"
 
-CATEGORY_ORDER = ["brokerage", "retirement", "529", "cash"]
+CATEGORY_ORDER = ["brokerage", "retirement", "cash", "529"]
 CATEGORY_META: dict[str, dict] = {
-    "brokerage": {"label": "Brokerage", "proxy": "VTI"},
-    "retirement": {"label": "Retirement", "proxy": "VTTSX"},
-    "529": {"label": "529", "proxy": "VTTSX"},
-    "cash": {"label": "Cash", "proxy": None},
+    "brokerage": {"label": "Brokerage"},
+    "retirement": {"label": "Retirement"},
+    "529":        {"label": "529"},
+    "cash":       {"label": "Cash"},
 }
 
 
@@ -418,7 +418,6 @@ from(bucket: "portfolio")
                 {
                     "key": cat,
                     "label": meta["label"],
-                    "proxy": meta["proxy"],
                     "value": total_val,
                     "value_fmt": _fmt_dollars_full(total_val),
                     "pct_fmt": f"{total_val / total_acct_value * 100:.1f}%"
@@ -483,5 +482,116 @@ from(bucket: "portfolio")
             "account_groups": account_groups,
             "today": today.isoformat(),
             "has_data": len(points) > 0,
+        },
+    )
+
+
+# SVG layout for the mini sparkline (no y-axis)
+_ML, _MT = 4, 4
+_MW, _MH = 472, 72
+_MR, _MB = _ML + _MW, _MT + _MH
+_SVG_MW, _SVG_MH = _MR + 4, _MB + 4
+
+
+@router.get("/partials/portfolio", response_class=HTMLResponse)
+async def portfolio_mini(request: Request):
+    """Censored portfolio sparkline for the main dashboard. No dollar values."""
+    query_1m = """
+from(bucket: "portfolio")
+  |> range(start: -30d)
+  |> filter(fn: (r) => r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value")
+  |> aggregateWindow(every: 1d, fn: last, createEmpty: false)
+  |> sort(columns: ["_time"])
+"""
+    query_2d = """
+from(bucket: "portfolio")
+  |> range(start: -2d)
+  |> filter(fn: (r) => r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value")
+  |> aggregateWindow(every: 1d, fn: last, createEmpty: false)
+  |> sort(columns: ["_time"])
+"""
+    ctx: dict = {"has_data": False}
+    try:
+        rows_1m = _query_influx(query_1m)
+        rows_2d = _query_influx(query_2d)
+    except Exception as e:
+        logger.error("Portfolio mini query failed: %s", e)
+        return templates.TemplateResponse(request, "partials/portfolio_mini.html", ctx)
+
+    # Parse 1-month daily points
+    by_day_1m: dict[date, tuple[datetime, float]] = {}
+    for row in rows_1m:
+        try:
+            t = _parse_ts(row["_time"])
+            v = float(row["_value"])
+            if v > 0:
+                by_day_1m[t.date()] = (t, v)
+        except (KeyError, ValueError):
+            continue
+    points_1m = [by_day_1m[d] for d in sorted(by_day_1m)]
+
+    if len(points_1m) < 2:
+        return templates.TemplateResponse(request, "partials/portfolio_mini.html", ctx)
+
+    # Monthly % change
+    month_chg = (points_1m[-1][1] - points_1m[0][1]) / points_1m[0][1] * 100
+
+    # Daily % change from last two available daily points
+    by_day_2d: dict[date, float] = {}
+    for row in rows_2d:
+        try:
+            t = _parse_ts(row["_time"])
+            v = float(row["_value"])
+            if v > 0:
+                by_day_2d[t.date()] = v
+        except (KeyError, ValueError):
+            continue
+    sorted_2d = [by_day_2d[d] for d in sorted(by_day_2d)]
+    day_chg: float | None = None
+    if len(sorted_2d) >= 2:
+        p, c = sorted_2d[-2], sorted_2d[-1]
+        day_chg = (c - p) / p * 100 if p else None
+
+    # SVG sparkline — no axes, no labels
+    t0 = points_1m[0][0].timestamp()
+    t1 = points_1m[-1][0].timestamp()
+    t_span = t1 - t0 or 1.0
+    vals = [v for _, v in points_1m]
+    v_lo = min(vals) * 0.995
+    v_hi = max(vals) * 1.005
+    v_span = v_hi - v_lo or 1.0
+
+    def xp(t: datetime) -> float:
+        return _ML + (t.timestamp() - t0) / t_span * _MW
+
+    def yp(v: float) -> float:
+        return _MT + (1.0 - (v - v_lo) / v_span) * _MH
+
+    svg_pts = [(xp(t), yp(v)) for t, v in points_1m]
+    mini_polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y in svg_pts)
+    mini_fill = (
+        f"M {svg_pts[0][0]:.1f},{_MB} "
+        + " ".join(f"L {x:.1f},{y:.1f}" for x, y in svg_pts)
+        + f" L {svg_pts[-1][0]:.1f},{_MB} Z"
+    )
+    perf_positive = month_chg >= 0
+
+    def _fmt_pct(v: float) -> str:
+        return f"+{v:.2f}%" if v >= 0 else f"{v:.2f}%"
+
+    return templates.TemplateResponse(
+        request,
+        "partials/portfolio_mini.html",
+        {
+            "has_data": True,
+            "svg_w": _SVG_MW,
+            "svg_h": _SVG_MH,
+            "polyline": mini_polyline,
+            "fill_path": mini_fill,
+            "perf_positive": perf_positive,
+            "month_chg_pct": _fmt_pct(month_chg),
+            "month_positive": month_chg >= 0,
+            "day_chg_pct": _fmt_pct(day_chg) if day_chg is not None else None,
+            "day_positive": (day_chg or 0) >= 0,
         },
     )

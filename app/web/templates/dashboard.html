@@ -41,4 +41,13 @@
         <span class="loading"></span> Loading calendar...
     </div>
 </section>
+
+<section class="dashboard-section">
+    <div id="portfolio-mini-container"
+         hx-get="/partials/portfolio"
+         hx-trigger="load, every 30m"
+         hx-swap="innerHTML">
+        <span class="loading"></span>
+    </div>
+</section>
 {% endblock %}

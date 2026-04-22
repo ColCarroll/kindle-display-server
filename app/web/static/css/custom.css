@@ -672,3 +672,46 @@ details[open] .pf-section-toggle::before {
     .pf-col-alloc { display: none; }
     .pf-chg-abs { display: none; }
 }
+
+/* ── Portfolio mini widget (dashboard) ── */
+
+.pf-mini-chart {
+    width: 100%;
+    max-width: 480px;
+    height: auto;
+    display: block;
+    margin-bottom: 0.35rem;
+}
+
+.pf-mini-stats {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    max-width: 480px;
+}
+
+.pf-mini-label {
+    color: #aaa;
+    font-size: 0.8rem;
+}
+
+.pf-mini-val {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+}
+
+.pf-mini-sep {
+    color: #ddd;
+}
+
+.pf-mini-link {
+    margin-left: auto;
+    color: #aaa;
+    font-size: 0.82rem;
+    text-decoration: none;
+}
+
+.pf-mini-link:hover {
+    color: #333;
+}
