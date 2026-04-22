@@ -2,13 +2,13 @@
 <p style="color:#aaa;font-size:0.9rem;font-style:italic;">No portfolio data.</p>
 {% else %}
 
-<div class="strava-stats" style="margin-bottom:0.5rem;">
-    <div class="strava-stat">
-        <div class="strava-stat-value"><strong><a href="/portfolio" style="color:inherit;text-decoration:none;">Portfolio</a></strong></div>
+<div class="pf-mini-section">
+    <div class="strava-stats" style="margin-bottom:0.25rem;">
+        <div class="strava-stat">
+            <div class="strava-stat-value"><strong><a href="/portfolio" style="color:inherit;text-decoration:none;">Portfolio</a></strong></div>
+        </div>
     </div>
-</div>
 
-<div class="pf-mini-chart-container">
     <svg viewBox="0 0 {{ svg_w }} {{ svg_h }}" class="pf-mini-chart" preserveAspectRatio="xMidYMid meet">
         <defs>
             <clipPath id="pf-mini-clip">
@@ -20,13 +20,9 @@
             </linearGradient>
         </defs>
 
-        {# Y-axis gridlines (no labels) #}
+        {# Y-axis gridlines (no labels — values censored) #}
         {% for y in y_gridlines %}
         <line x1="{{ MCL }}" y1="{{ y }}" x2="{{ MCR }}" y2="{{ y }}" stroke="#ebebeb" stroke-width="1"/>
-        {% endfor %}
-
-        {# Left y-axis tick marks #}
-        {% for y in y_gridlines %}
         <line x1="{{ MCL - 4 }}" y1="{{ y }}" x2="{{ MCL }}" y2="{{ y }}" stroke="#ccc" stroke-width="1"/>
         {% endfor %}
 
@@ -45,19 +41,19 @@
 
         {# X-axis date labels #}
         {% for m in x_markers %}
-        <text x="{{ m.x }}" y="{{ MCB + 18 }}" font-size="18" fill="#aaa" text-anchor="middle">{{ m.label }}</text>
+        <text x="{{ m.x }}" y="{{ MCB + 14 }}" font-size="11" fill="#aaa" text-anchor="middle">{{ m.label }}</text>
         {% endfor %}
     </svg>
-</div>
 
-<div class="strava-stats">
-    <div class="strava-stat">
-        <div class="strava-stat-value {% if day_positive %}pf-pos{% else %}pf-neg{% endif %}">{{ day_chg_pct if day_chg_pct is not none else "—" }}</div>
-        <div class="strava-stat-label">day</div>
-    </div>
-    <div class="strava-stat">
-        <div class="strava-stat-value {% if month_positive %}pf-pos{% else %}pf-neg{% endif %}">{{ month_chg_pct }}</div>
-        <div class="strava-stat-label">month</div>
+    <div class="strava-stats">
+        <div class="strava-stat">
+            <div class="strava-stat-value {% if day_positive %}pf-pos{% else %}pf-neg{% endif %}">{{ day_chg_pct if day_chg_pct is not none else "—" }}</div>
+            <div class="strava-stat-label">day</div>
+        </div>
+        <div class="strava-stat">
+            <div class="strava-stat-value {% if month_positive %}pf-pos{% else %}pf-neg{% endif %}">{{ month_chg_pct }}</div>
+            <div class="strava-stat-label">month</div>
+        </div>
     </div>
 </div>
 

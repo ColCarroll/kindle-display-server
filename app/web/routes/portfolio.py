@@ -486,11 +486,12 @@ from(bucket: "portfolio")
     )
 
 
-# SVG layout matching other dashboard charts (900-wide viewBox, no y-axis labels)
-_MCL, _MCT = 12, 16          # left/top: small left margin for y-axis ticks, no labels
-_MCW, _MCH = 876, 200        # chart content area
+# SVG layout for mini sparkline — same proportions as the main pf-chart (max-width 680px)
+# Small left margin for y-axis tick marks only (no labels = no wide left gutter needed)
+_MCL, _MCT = 10, 16
+_MCW, _MCH = 490, 180
 _MCR, _MCB = _MCL + _MCW, _MCT + _MCH
-_MSVG_W, _MSVG_H = _MCR + 12, _MCB + 30   # 30px bottom margin for x-axis labels
+_MSVG_W, _MSVG_H = _MCR + 10, _MCB + 28   # 28px bottom margin for x-axis labels
 
 
 @router.get("/partials/portfolio", response_class=HTMLResponse)

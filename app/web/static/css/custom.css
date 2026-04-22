@@ -675,13 +675,14 @@ details[open] .pf-section-toggle::before {
 
 /* ── Portfolio mini widget (dashboard) ── */
 
-.pf-mini-chart-container {
+.pf-mini-section {
     width: 100%;
-    max-width: 900px;
-    margin: 0.5rem 0;
+    max-width: 680px;
 }
 
 .pf-mini-chart {
     width: 100%;
     height: auto;
+    display: block;
+    margin: 0.5rem 0 0.75rem;
 }
