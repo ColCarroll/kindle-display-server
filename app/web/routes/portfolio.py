@@ -495,11 +495,8 @@ from(bucket: "portfolio")
                     "pct_fmt": f"{v / total_acct_value * 100:.1f}%" if total_acct_value else "—",
                     "chg_raw": chg,
                     "pct_raw": pct,
-                    "chg_abs": _fmt_signed(chg) if chg is not None else "—",
-                    "chg_pct": (f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%")
-                    if pct is not None
-                    else "—",
-                    "chg_pct_short": f"{abs(pct):.1f}%" if pct is not None else "—",
+                    "chg_abs": _fmt_dollars_full(abs(chg)) if chg is not None else "—",
+                    "chg_pct": f"{abs(pct):.2f}%" if pct is not None else "—",
                     "chg_positive": (chg or 0) >= 0,
                     "has_change": chg is not None,
                     "selected": acct_id == account,
@@ -534,11 +531,8 @@ from(bucket: "portfolio")
                     "pct_fmt": f"{total_val / total_acct_value * 100:.1f}%"
                     if total_acct_value
                     else "—",
-                    "chg_abs": _fmt_signed(total_chg) if total_chg is not None else "—",
-                    "chg_pct": (f"+{total_pct:.2f}%" if total_pct >= 0 else f"{total_pct:.2f}%")
-                    if total_pct is not None
-                    else "—",
-                    "chg_pct_short": f"{abs(total_pct):.1f}%" if total_pct is not None else "—",
+                    "chg_abs": _fmt_dollars_full(abs(total_chg)) if total_chg is not None else "—",
+                    "chg_pct": f"{abs(total_pct):.2f}%" if total_pct is not None else "—",
                     "chg_positive": (total_chg or 0) >= 0,
                     "has_change": total_chg is not None,
                     "accounts": cat_accts,
