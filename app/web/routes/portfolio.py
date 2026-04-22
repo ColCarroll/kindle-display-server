@@ -231,44 +231,54 @@ from(bucket: "portfolio")
     if len(points) >= 2:
         now_et = datetime.now(TZ_ET)
 
+        yest_points: list[tuple[datetime, float]] = []
+        has_market_data = False
         if is_intraday:
-            # Fixed 9:30am–4pm ET window regardless of how much data has arrived
-            t0 = now_et.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
-            t1 = now_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
-            t_span = t1 - t0
+            market_open_ts = now_et.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
+            market_close_ts = now_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
+            # Only use the fixed window if today's market has opened and we have data in it
+            has_market_data = any(t.timestamp() >= market_open_ts for t, _ in points)
 
-            # Fetch yesterday's intraday points for the ghost line
-            yest_points: list[tuple[datetime, float]] = []
-            try:
-                yest_measurement = (
-                    f'r._measurement == "account_value" and r._field == "value" and r.account_id == "{account}"'
-                    if account
-                    else 'r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value"'
-                )
-                yest_q = f"""
+            if has_market_data:
+                t0 = market_open_ts
+                t1 = market_close_ts
+                t_span = t1 - t0
+
+                # Fetch yesterday's intraday points for the ghost line
+                try:
+                    yest_measurement = (
+                        f'r._measurement == "account_value" and r._field == "value" and r.account_id == "{account}"'
+                        if account
+                        else 'r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value"'
+                    )
+                    yest_q = f"""
 from(bucket: "portfolio")
   |> range(start: -2d)
   |> filter(fn: (r) => {yest_measurement})
   |> aggregateWindow(every: 10m, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
-                yesterday_date = now_et.date() - timedelta(days=1)
-                for row in _query_influx(yest_q):
-                    try:
-                        t = _parse_ts(row["_time"])
-                        v = float(row["_value"])
-                        if v > 0 and t.astimezone(TZ_ET).date() == yesterday_date:
-                            yest_points.append((t, v))
-                    except (KeyError, ValueError):
-                        continue
-                yest_points.sort()
-            except Exception as e:
-                logger.warning("Could not fetch yesterday's intraday data: %s", e)
+                    yesterday_date = now_et.date() - timedelta(days=1)
+                    for row in _query_influx(yest_q):
+                        try:
+                            t = _parse_ts(row["_time"])
+                            v = float(row["_value"])
+                            if v > 0 and t.astimezone(TZ_ET).date() == yesterday_date:
+                                yest_points.append((t, v))
+                        except (KeyError, ValueError):
+                            continue
+                    yest_points.sort()
+                except Exception as e:
+                    logger.warning("Could not fetch yesterday's intraday data: %s", e)
+            else:
+                # Pre-market: fall back to data-driven bounds showing last 24h
+                t0 = points[0][0].timestamp()
+                t1 = points[-1][0].timestamp()
+                t_span = t1 - t0 or 1.0
         else:
             t0 = points[0][0].timestamp()
             t1 = points[-1][0].timestamp()
             t_span = t1 - t0 or 1.0
-            yest_points = []
 
         # Y range: include yesterday's values so ghost line stays in bounds
         vals = [v for _, v in points]
@@ -294,7 +304,7 @@ from(bucket: "portfolio")
             + f" L {svg_pts[-1][0]:.1f},{CB} Z"
         )
 
-        if is_intraday:
+        if is_intraday and has_market_data:
             # Hour labels at 10am, 12pm, 2pm, 4pm ET
             for hour, label in [(10, "10am"), (12, "12pm"), (14, "2pm"), (16, "4pm")]:
                 marker_et = now_et.replace(hour=hour, minute=0, second=0, microsecond=0)
