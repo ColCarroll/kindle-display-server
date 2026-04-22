@@ -156,10 +156,17 @@ async def portfolio_page(
         if time_range not in RANGE_OPTIONS:
             time_range = DEFAULT_RANGE
         opt = RANGE_OPTIONS[time_range]
-        flux_range = f"start: {opt['flux']}"
         agg_window = opt["agg"]
         start_date = None
         end_date = None
+        # For 1D, anchor to today's midnight UTC so the change baseline (points[0])
+        # matches the midnight backfill and is consistent with the account changes.
+        # Using -1d would pick up yesterday evening's YNAB sync as the baseline.
+        if time_range == "1d":
+            today_midnight = date.today().isoformat() + "T00:00:00Z"
+            flux_range = f"start: {today_midnight}"
+        else:
+            flux_range = f"start: {opt['flux']}"
 
     # --- Fetch time series (per-account or total) ---
     if account:
@@ -434,19 +441,11 @@ from(bucket: "portfolio")
         daily_rows = list(reversed(daily_rows))[:20]
 
     # --- Per-account changes over the selected range from InfluxDB ---
-    # For 1D, use midnight UTC so the account baseline aligns with the midnight
-    # backfill used by the portfolio total (not yesterday's 8pm YNAB sync point).
-    if time_range == "1d" and not custom_range:
-        today_midnight = date.today().isoformat() + "T00:00:00Z"
-        acct_flux_range = f"start: {today_midnight}"
-    else:
-        acct_flux_range = flux_range
-
     acct_day_changes: dict[str, dict] = {}
     try:
         acct_query = f"""
 from(bucket: "portfolio")
-  |> range({acct_flux_range})
+  |> range({flux_range})
   |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value")
   |> aggregateWindow(every: {agg_window}, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
