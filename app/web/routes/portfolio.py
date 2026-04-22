@@ -451,7 +451,7 @@ from(bucket: "portfolio")
   |> sort(columns: ["_time"])
 """
         acct_rows = _query_influx(acct_query)
-        by_acct_ts: dict[str, list[tuple[date, float]]] = {}
+        by_acct_ts: dict[str, list[tuple[datetime, float]]] = {}
         for row in acct_rows:
             acct_id = row.get("account_id", "")
             if not acct_id:
@@ -461,7 +461,7 @@ from(bucket: "portfolio")
                 v = float(row["_value"])
                 if acct_id not in by_acct_ts:
                     by_acct_ts[acct_id] = []
-                by_acct_ts[acct_id].append((t.date(), v))
+                by_acct_ts[acct_id].append((t, v))
             except (KeyError, ValueError):
                 continue
         for acct_id, vals in by_acct_ts.items():
