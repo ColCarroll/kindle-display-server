@@ -233,13 +233,18 @@ from(bucket: "portfolio")
 
         yest_points: list[tuple[datetime, float]] = []
         has_market_data = False
+        has_yesterday_data = False
         if is_intraday:
             market_open_ts = now_et.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
             market_close_ts = now_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
-            # Only use the fixed window if today's market has opened and we have data in it
             has_market_data = any(t.timestamp() >= market_open_ts for t, _ in points)
 
+            prev_et = now_et - timedelta(days=1)
+            prev_open_ts = prev_et.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
+            prev_close_ts = prev_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
+
             if has_market_data:
+                # Today's session is live — use today's fixed window
                 t0 = market_open_ts
                 t1 = market_close_ts
                 t_span = t1 - t0
@@ -271,16 +276,25 @@ from(bucket: "portfolio")
                 except Exception as e:
                     logger.warning("Could not fetch yesterday's intraday data: %s", e)
             else:
-                # Pre-market: fall back to data-driven bounds showing last 24h
-                t0 = points[0][0].timestamp()
-                t1 = points[-1][0].timestamp()
-                t_span = t1 - t0 or 1.0
+                # Pre-market: check whether yesterday's session is in the -1d window
+                has_yesterday_data = any(
+                    prev_open_ts <= t.timestamp() <= prev_close_ts for t, _ in points
+                )
+                if has_yesterday_data:
+                    t0 = prev_open_ts
+                    t1 = prev_close_ts
+                    t_span = t1 - t0
+                else:
+                    # Weekend / no market data in range — data-driven fallback
+                    t0 = points[0][0].timestamp()
+                    t1 = points[-1][0].timestamp()
+                    t_span = t1 - t0 or 1.0
         else:
             t0 = points[0][0].timestamp()
             t1 = points[-1][0].timestamp()
             t_span = t1 - t0 or 1.0
 
-        # Y range: include yesterday's values so ghost line stays in bounds
+        # Y range: include yesterday ghost values so they stay in bounds
         vals = [v for _, v in points]
         all_vals = vals + [v for _, v in yest_points]
         v_lo = min(all_vals) * 0.995
@@ -304,16 +318,17 @@ from(bucket: "portfolio")
             + f" L {svg_pts[-1][0]:.1f},{CB} Z"
         )
 
-        if is_intraday and has_market_data:
-            # Hour labels at 10am, 12pm, 2pm, 4pm ET
+        if is_intraday and (has_market_data or has_yesterday_data):
+            # Fixed hour labels; anchor to whichever day's window is active
+            ref_et = now_et if has_market_data else now_et - timedelta(days=1)
             for hour, label in [(10, "10am"), (12, "12pm"), (14, "2pm"), (16, "4pm")]:
-                marker_et = now_et.replace(hour=hour, minute=0, second=0, microsecond=0)
+                marker_et = ref_et.replace(hour=hour, minute=0, second=0, microsecond=0)
                 xf = (marker_et.timestamp() - t0) / t_span
                 if 0.01 <= xf <= 0.99:
                     x_markers.append({"x": CL + xf * CW, "label": label})
 
-            # Yesterday ghost line: shift timestamps by +1 day to overlay on today's x-axis
-            if yest_points:
+            # Ghost line only when showing today's live session
+            if has_market_data and yest_points:
                 yest_svg_pts = [(xp_ts(t.timestamp() + 86400), yp(v)) for t, v in yest_points]
                 yesterday_polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y in yest_svg_pts)
         else:
