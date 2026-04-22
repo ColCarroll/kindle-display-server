@@ -486,12 +486,12 @@ from(bucket: "portfolio")
     )
 
 
-# SVG layout for mini sparkline — same proportions as the main pf-chart (max-width 680px)
-# Small left margin for y-axis tick marks only (no labels = no wide left gutter needed)
-_MCL, _MCT = 10, 16
-_MCW, _MCH = 490, 180
+# SVG layout for mini sparkline — 900-wide viewBox, constrained to 680px by CSS.
+# Font sizes chosen so they render ~13px at 680px display width (scaled from 900).
+_MCL, _MCT = 12, 16
+_MCW, _MCH = 876, 200
 _MCR, _MCB = _MCL + _MCW, _MCT + _MCH
-_MSVG_W, _MSVG_H = _MCR + 10, _MCB + 28   # 28px bottom margin for x-axis labels
+_MSVG_W, _MSVG_H = _MCR + 12, _MCB + 30
 
 
 @router.get("/partials/portfolio", response_class=HTMLResponse)
