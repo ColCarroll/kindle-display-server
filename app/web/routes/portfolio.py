@@ -167,7 +167,7 @@ async def portfolio_page(
 from(bucket: "portfolio")
   |> range({flux_range})
   |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value" and r.account_id == "{account}")
-  |> aggregateWindow(every: {agg_window}, fn: last, createEmpty: false)
+  |> aggregateWindow(every: {agg_window}, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
     else:
@@ -175,7 +175,7 @@ from(bucket: "portfolio")
 from(bucket: "portfolio")
   |> range({flux_range})
   |> filter(fn: (r) => r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value")
-  |> aggregateWindow(every: {agg_window}, fn: last, createEmpty: false)
+  |> aggregateWindow(every: {agg_window}, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
     try:
@@ -330,7 +330,7 @@ from(bucket: "portfolio")
 from(bucket: "portfolio")
   |> range({acct_flux_range})
   |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value")
-  |> aggregateWindow(every: 1d, fn: last, createEmpty: false)
+  |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
         acct_rows = _query_influx(acct_query)
@@ -501,14 +501,14 @@ async def portfolio_mini(request: Request):
 from(bucket: "portfolio")
   |> range(start: -30d)
   |> filter(fn: (r) => r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value")
-  |> aggregateWindow(every: 1d, fn: last, createEmpty: false)
+  |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
     query_2d = """
 from(bucket: "portfolio")
   |> range(start: -2d)
   |> filter(fn: (r) => r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value")
-  |> aggregateWindow(every: 1d, fn: last, createEmpty: false)
+  |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
     ctx: dict = {"has_data": False}
