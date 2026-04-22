@@ -620,6 +620,15 @@ details[open] .pf-section-toggle::before {
 
 /* Account group rows */
 
+.pf-group-row {
+    cursor: pointer;
+    user-select: none;
+}
+
+.pf-group-row:hover td {
+    background: #f5f5f5;
+}
+
 .pf-group-row td {
     font-weight: 500;
     padding-top: 0.75rem;
@@ -629,6 +638,15 @@ details[open] .pf-section-toggle::before {
 .pf-group-row:first-child td {
     border-top: none;
     padding-top: 0.3rem;
+}
+
+.pf-group-arrow {
+    display: inline-block;
+    font-size: 0.6em;
+    color: #aaa;
+    width: 1em;
+    margin-right: 0.2rem;
+    vertical-align: middle;
 }
 
 .pf-proxy {
