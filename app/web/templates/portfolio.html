@@ -30,6 +30,11 @@
 
 <div class="pf-summary">
     <div class="pf-value">{{ current_value }}</div>
+    {% if account_name %}
+    <div class="pf-account-label">
+        {{ account_name }} &mdash; <a href="/portfolio?range={{ range }}{% if custom_range %}&start={{ start }}&end={{ end }}{% endif %}" class="pf-clear-filter">All accounts</a>
+    </div>
+    {% endif %}
     {% if perf_pct is not none %}
     <div class="pf-perf {% if perf_positive %}pf-pos{% else %}pf-neg{% endif %}">
         {{ perf_abs }}&ensp;({{ perf_pct }})
@@ -101,7 +106,9 @@
         </thead>
         <tbody>
             {% for a in accounts %}
-            <tr>
+            {% set filter_url = "/portfolio?range=" ~ range ~ ("&start=" ~ start ~ "&end=" ~ end if custom_range else "") %}
+            {% set row_href = filter_url if a.selected else filter_url ~ "&account=" ~ a.id %}
+            <tr class="pf-acct-row{% if a.selected %} pf-acct-selected{% endif %}" onclick="location.href='{{ row_href }}'">
                 <td>{{ a.name }}</td>
                 <td class="pf-num pf-day-chg">
                     {% if a.has_change %}

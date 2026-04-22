@@ -591,6 +591,33 @@ details[open] .pf-section-toggle::before {
     vertical-align: middle;
 }
 
+.pf-acct-row {
+    cursor: pointer;
+}
+
+.pf-acct-row:hover td {
+    background: #f5f5f5;
+}
+
+.pf-acct-selected td {
+    background: #f0f4ff;
+}
+
+.pf-acct-selected:hover td {
+    background: #e8eeff;
+}
+
+.pf-account-label {
+    font-size: 0.9rem;
+    color: #555;
+    margin-top: 0.15rem;
+}
+
+.pf-clear-filter {
+    color: #888;
+    font-size: 0.85rem;
+}
+
 @media (max-width: 600px) {
     .pf-value { font-size: 1.5rem; }
     .pf-table { font-size: 0.8rem; }

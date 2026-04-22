@@ -104,8 +104,12 @@ async def portfolio_page(
     time_range: str = Query(default=DEFAULT_RANGE, alias="range"),
     start: str = Query(default=None),
     end: str = Query(default=None),
+    account: str = Query(default=None),
     user=Depends(require_auth),  # noqa: B008
 ):
+    # Validate account param — must be a positive integer string
+    if account and not account.isdigit():
+        account = None
     today = date.today()
     custom_range = bool(start and end)
 
@@ -132,8 +136,17 @@ async def portfolio_page(
         start_date = None
         end_date = None
 
-    # --- Fetch portfolio_value "all" time series ---
-    query = f"""
+    # --- Fetch time series (per-account or total) ---
+    if account:
+        query = f"""
+from(bucket: "portfolio")
+  |> range({flux_range})
+  |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value" and r.account_id == "{account}")
+  |> aggregateWindow(every: {agg_window}, fn: last, createEmpty: false)
+  |> sort(columns: ["_time"])
+"""
+    else:
+        query = f"""
 from(bucket: "portfolio")
   |> range({flux_range})
   |> filter(fn: (r) => r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value")
@@ -339,6 +352,7 @@ from(bucket: "portfolio")
             pct = rng.get("pct", None)
             accounts.append(
                 {
+                    "id": acct_id,
                     "name": a.get("name", ""),
                     "type": a.get("type", ""),
                     "value": v,
@@ -350,6 +364,7 @@ from(bucket: "portfolio")
                     else "—",
                     "chg_positive": (chg or 0) >= 0,
                     "has_change": chg is not None,
+                    "selected": acct_id == account,
                 }
             )
         accounts.sort(key=lambda x: x["value"], reverse=True)
@@ -389,6 +404,11 @@ from(bucket: "portfolio")
             "CH": CH,
             "CR": CR,
             "CB": CB,
+            # Filter state
+            "account": account or "",
+            "account_name": next((a["name"] for a in accounts if a["id"] == account), "")
+            if account
+            else "",
             # Tables
             "daily_rows": daily_rows,
             "accounts": accounts,
