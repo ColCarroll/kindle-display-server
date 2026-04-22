@@ -618,9 +618,39 @@ details[open] .pf-section-toggle::before {
     font-size: 0.85rem;
 }
 
+/* Account group rows */
+
+.pf-group-row td {
+    font-weight: 500;
+    padding-top: 0.75rem;
+    border-top: 1px solid #ddd;
+}
+
+.pf-group-row:first-child td {
+    border-top: none;
+    padding-top: 0.3rem;
+}
+
+.pf-proxy {
+    font-size: 0.72rem;
+    color: #bbb;
+    font-family: monospace;
+    margin-left: 0.3rem;
+    font-weight: 400;
+}
+
+.pf-sub-name {
+    padding-left: 1rem;
+    color: #555;
+}
+
+.pf-sub-row td {
+    font-size: 0.85rem;
+}
+
 @media (max-width: 600px) {
     .pf-value { font-size: 1.5rem; }
     .pf-table { font-size: 0.8rem; }
-    .pf-badge { min-width: 2rem; font-size: 0.65rem; }
-    .pf-owner { display: none; }
+    .pf-col-alloc { display: none; }
+    .pf-chg-abs { display: none; }
 }

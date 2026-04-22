@@ -103,36 +103,52 @@
 </svg>
 
 {# ── Accounts table ── #}
-{% if accounts %}
+{% if account_groups %}
 <div class="pf-section">
     <table class="pf-table pf-accounts-table">
         <thead>
             <tr>
                 <th>Account</th>
                 <th class="pf-num">{{ change_label }}</th>
-                <th class="pf-num">% of total</th>
+                <th class="pf-num pf-col-alloc">% of total</th>
                 <th class="pf-num">Value</th>
             </tr>
         </thead>
         <tbody>
-            {% for a in accounts %}
-            {% set filter_url = "/portfolio?range=" ~ range ~ ("&start=" ~ start ~ "&end=" ~ end if custom_range else "") %}
-            {% set row_href = filter_url if a.selected else filter_url ~ "&account=" ~ a.id %}
-            <tr class="pf-acct-row{% if a.selected %} pf-acct-selected{% endif %}"
-                hx-get="{{ row_href }}" hx-target="#pf-content" hx-select="#pf-content" hx-swap="outerHTML" hx-push-url="true">
-                <td>{{ a.name }}</td>
+            {% for g in account_groups %}
+            <tr class="pf-group-row">
+                <td>{{ g.label }}{% if g.proxy %}<span class="pf-proxy">~{{ g.proxy }}</span>{% endif %}</td>
                 <td class="pf-num pf-day-chg">
-                    {% if a.has_change %}
-                    <span class="{% if a.chg_positive %}pf-pos{% else %}pf-neg{% endif %}">
-                        {{ a.chg_abs }}<br><small>{{ a.chg_pct }}</small>
+                    {% if g.has_change %}
+                    <span class="{% if g.chg_positive %}pf-pos{% else %}pf-neg{% endif %}">
+                        <span class="pf-chg-abs">{{ g.chg_abs }}<br></span><small>{{ g.chg_pct }}</small>
                     </span>
                     {% else %}
                     <span class="pf-muted">—</span>
                     {% endif %}
                 </td>
-                <td class="pf-num pf-muted">{{ a.pct_fmt }}</td>
+                <td class="pf-num pf-col-alloc pf-muted">{{ g.pct_fmt }}</td>
+                <td class="pf-num pf-acct-value">{{ g.value_fmt }}</td>
+            </tr>
+            {% for a in g.accounts %}
+            {% set filter_url = "/portfolio?range=" ~ range ~ ("&start=" ~ start ~ "&end=" ~ end if custom_range else "") %}
+            {% set row_href = filter_url if a.selected else filter_url ~ "&account=" ~ a.id %}
+            <tr class="pf-acct-row pf-sub-row{% if a.selected %} pf-acct-selected{% endif %}"
+                hx-get="{{ row_href }}" hx-target="#pf-content" hx-select="#pf-content" hx-swap="outerHTML" hx-push-url="true">
+                <td class="pf-sub-name">{{ a.name }}</td>
+                <td class="pf-num pf-day-chg">
+                    {% if a.has_change %}
+                    <span class="{% if a.chg_positive %}pf-pos{% else %}pf-neg{% endif %}">
+                        <span class="pf-chg-abs">{{ a.chg_abs }}<br></span><small>{{ a.chg_pct }}</small>
+                    </span>
+                    {% else %}
+                    <span class="pf-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="pf-num pf-col-alloc pf-muted">{{ a.pct_fmt }}</td>
                 <td class="pf-num pf-acct-value">{{ a.value_fmt }}</td>
             </tr>
+            {% endfor %}
             {% endfor %}
         </tbody>
     </table>

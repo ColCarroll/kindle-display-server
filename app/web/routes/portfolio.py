@@ -24,6 +24,31 @@ INFLUX_TOKEN = "airq-local-token"
 INFLUX_ORG = "home"
 PORTFOLIO_API = "http://koonti:8087"
 
+CATEGORY_ORDER = ["brokerage", "retirement", "529", "cash"]
+CATEGORY_META: dict[str, dict] = {
+    "brokerage": {"label": "Brokerage", "proxy": "VTI"},
+    "retirement": {"label": "Retirement", "proxy": "VTTSX"},
+    "529": {"label": "529", "proxy": "VTTSX"},
+    "cash": {"label": "Cash", "proxy": None},
+}
+
+
+def _categorize(acct: dict) -> str:
+    t = acct.get("type", "")
+    name = acct.get("name", "").lower()
+    if t == "taxable":
+        return "brokerage"
+    if t in ("401k", "roth_ira") or "403b" in name:
+        return "retirement"
+    if t == "hsa":
+        return "retirement"
+    if "529" in name:
+        return "529"
+    if t in ("checking", "hysa", "savings"):
+        return "cash"
+    return "retirement"
+
+
 RANGE_OPTIONS = {
     "1d": {"flux": "-1d", "label": "1D", "agg": "10m"},
     "1w": {"flux": "-7d", "label": "1W", "agg": "1h"},
@@ -358,6 +383,8 @@ from(bucket: "portfolio")
                     "value": v,
                     "value_fmt": _fmt_dollars_full(v),
                     "pct_fmt": f"{v / total_acct_value * 100:.1f}%" if total_acct_value else "—",
+                    "chg_raw": chg,
+                    "pct_raw": pct,
                     "chg_abs": _fmt_signed(chg) if chg is not None else "—",
                     "chg_pct": (f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%")
                     if pct is not None
@@ -368,8 +395,47 @@ from(bucket: "portfolio")
                 }
             )
         accounts.sort(key=lambda x: x["value"], reverse=True)
+
+        # Build grouped view
+        by_cat: dict[str, list[dict]] = {k: [] for k in CATEGORY_ORDER}
+        for a in accounts:
+            by_cat[_categorize(a)].append(a)
+
+        account_groups: list[dict] = []
+        for cat in CATEGORY_ORDER:
+            cat_accts = by_cat[cat]
+            if not cat_accts:
+                continue
+            meta = CATEGORY_META[cat]
+            total_val = sum(a["value"] for a in cat_accts)
+            chg_accts = [a for a in cat_accts if a["has_change"]]
+            total_chg: float | None = sum(a["chg_raw"] for a in chg_accts) if chg_accts else None
+            start_val = (total_val - total_chg) if total_chg is not None else None
+            total_pct: float | None = (
+                total_chg / start_val * 100 if (start_val is not None and start_val != 0) else None
+            )
+            account_groups.append(
+                {
+                    "key": cat,
+                    "label": meta["label"],
+                    "proxy": meta["proxy"],
+                    "value": total_val,
+                    "value_fmt": _fmt_dollars_full(total_val),
+                    "pct_fmt": f"{total_val / total_acct_value * 100:.1f}%"
+                    if total_acct_value
+                    else "—",
+                    "chg_abs": _fmt_signed(total_chg) if total_chg is not None else "—",
+                    "chg_pct": (f"+{total_pct:.2f}%" if total_pct >= 0 else f"{total_pct:.2f}%")
+                    if total_pct is not None
+                    else "—",
+                    "chg_positive": (total_chg or 0) >= 0,
+                    "has_change": total_chg is not None,
+                    "accounts": cat_accts,
+                }
+            )
     except Exception as e:
         logger.warning("Could not fetch accounts: %s", e)
+        account_groups = []
 
     return templates.TemplateResponse(
         request,
@@ -406,12 +472,15 @@ from(bucket: "portfolio")
             "CB": CB,
             # Filter state
             "account": account or "",
-            "account_name": next((a["name"] for a in accounts if a["id"] == account), "")
+            "account_name": next(
+                (a["name"] for g in account_groups for a in g["accounts"] if a["id"] == account),
+                "",
+            )
             if account
             else "",
             # Tables
             "daily_rows": daily_rows,
-            "accounts": accounts,
+            "account_groups": account_groups,
             "today": today.isoformat(),
             "has_data": len(points) > 0,
         },
