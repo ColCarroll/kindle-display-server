@@ -462,6 +462,11 @@
 .pf-neg { color: #c44; }
 .pf-muted { color: #888; }
 
+@media (prefers-color-scheme: dark) {
+    .pf-pos { color: #5cb85c; }
+    .pf-neg { color: #e06060; }
+}
+
 /* Chart */
 
 .pf-chart {
