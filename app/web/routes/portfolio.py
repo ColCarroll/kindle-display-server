@@ -440,7 +440,7 @@ from(bucket: "portfolio")
 from(bucket: "portfolio")
   |> range({flux_range})
   |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value")
-  |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
+  |> aggregateWindow(every: {agg_window}, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
         acct_rows = _query_influx(acct_query)
