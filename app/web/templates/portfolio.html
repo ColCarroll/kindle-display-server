@@ -82,6 +82,19 @@
     <path d="{{ fill_path }}" fill="url(#pf-fill-grad)" clip-path="url(#pf-clip)"/>
     {% endif %}
 
+    {# Yesterday ghost line (intraday only) — rendered before today so today is on top #}
+    {% if yesterday_polyline %}
+    <polyline points="{{ yesterday_polyline }}"
+              fill="none"
+              stroke="#bbb"
+              stroke-width="1.2"
+              stroke-dasharray="4,3"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              opacity="0.7"
+              clip-path="url(#pf-clip)"/>
+    {% endif %}
+
     {# Portfolio value line #}
     {% if polyline %}
     <polyline points="{{ polyline }}"

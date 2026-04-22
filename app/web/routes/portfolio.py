@@ -28,8 +28,8 @@ CATEGORY_ORDER = ["brokerage", "retirement", "cash", "529"]
 CATEGORY_META: dict[str, dict] = {
     "brokerage": {"label": "Brokerage"},
     "retirement": {"label": "Retirement"},
-    "529":        {"label": "529"},
-    "cash":       {"label": "Cash"},
+    "529": {"label": "529"},
+    "cash": {"label": "Cash"},
 }
 
 
@@ -222,23 +222,66 @@ from(bucket: "portfolio")
     perf_positive = (perf_pct or 0) >= 0
 
     # --- SVG chart geometry ---
-    polyline = fill_path = ""
+    is_intraday = time_range == "1d" and not custom_range
+    polyline = fill_path = yesterday_polyline = ""
     x_markers: list[dict] = []
     y_markers: list[dict] = []
     perf_line_y: float | None = None
 
     if len(points) >= 2:
-        t0 = points[0][0].timestamp()
-        t1 = points[-1][0].timestamp()
-        t_span = t1 - t0 or 1.0
+        now_et = datetime.now(TZ_ET)
 
+        if is_intraday:
+            # Fixed 9:30am–4pm ET window regardless of how much data has arrived
+            t0 = now_et.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
+            t1 = now_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
+            t_span = t1 - t0
+
+            # Fetch yesterday's intraday points for the ghost line
+            yest_points: list[tuple[datetime, float]] = []
+            try:
+                yest_measurement = (
+                    f'r._measurement == "account_value" and r._field == "value" and r.account_id == "{account}"'
+                    if account
+                    else 'r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value"'
+                )
+                yest_q = f"""
+from(bucket: "portfolio")
+  |> range(start: -2d)
+  |> filter(fn: (r) => {yest_measurement})
+  |> aggregateWindow(every: 10m, fn: last, createEmpty: false, timeSrc: "_start")
+  |> sort(columns: ["_time"])
+"""
+                yesterday_date = now_et.date() - timedelta(days=1)
+                for row in _query_influx(yest_q):
+                    try:
+                        t = _parse_ts(row["_time"])
+                        v = float(row["_value"])
+                        if v > 0 and t.astimezone(TZ_ET).date() == yesterday_date:
+                            yest_points.append((t, v))
+                    except (KeyError, ValueError):
+                        continue
+                yest_points.sort()
+            except Exception as e:
+                logger.warning("Could not fetch yesterday's intraday data: %s", e)
+        else:
+            t0 = points[0][0].timestamp()
+            t1 = points[-1][0].timestamp()
+            t_span = t1 - t0 or 1.0
+            yest_points = []
+
+        # Y range: include yesterday's values so ghost line stays in bounds
         vals = [v for _, v in points]
-        v_lo = min(vals) * 0.995
-        v_hi = max(vals) * 1.005
+        all_vals = vals + [v for _, v in yest_points]
+        v_lo = min(all_vals) * 0.995
+        v_hi = max(all_vals) * 1.005
         v_span = v_hi - v_lo or 1.0
 
+        def xp_ts(ts: float) -> float:
+            return CL + (ts - t0) / t_span * CW
+
         def xp(t: datetime) -> float:
-            return CL + (t.timestamp() - t0) / t_span * CW
+            return xp_ts(t.timestamp())
 
         def yp(v: float) -> float:
             return CT + (1.0 - (v - v_lo) / v_span) * CH
@@ -251,39 +294,54 @@ from(bucket: "portfolio")
             + f" L {svg_pts[-1][0]:.1f},{CB} Z"
         )
 
-        # X-axis date labels
-        n_days = (points[-1][0] - points[0][0]).days
-        step = (
-            7
-            if n_days <= 35
-            else 14
-            if n_days <= 100
-            else 30
-            if n_days <= 200
-            else 60
-            if n_days <= 400
-            else 90
-            if n_days <= 800
-            else 365
-        )
-        seen_years: set[int] = set()
-        cur = points[0][0].date() + timedelta(days=step)
-        last_d = points[-1][0].date()
-        while cur <= last_d:
-            tm = datetime(cur.year, cur.month, cur.day, tzinfo=timezone.utc)
-            xf = (tm.timestamp() - t0) / t_span
-            if 0.02 <= xf <= 0.97:
-                if step >= 365:
-                    label = str(cur.year)
-                elif step >= 28:
-                    label = (
-                        cur.strftime("%b '%y") if cur.year not in seen_years else cur.strftime("%b")
-                    )
-                else:
-                    label = cur.strftime("%-m/%-d")
-                seen_years.add(cur.year)
-                x_markers.append({"x": CL + xf * CW, "label": label})
-            cur += timedelta(days=step)
+        if is_intraday:
+            # Hour labels at 10am, 12pm, 2pm, 4pm ET
+            for hour, label in [(10, "10am"), (12, "12pm"), (14, "2pm"), (16, "4pm")]:
+                marker_et = now_et.replace(hour=hour, minute=0, second=0, microsecond=0)
+                xf = (marker_et.timestamp() - t0) / t_span
+                if 0.01 <= xf <= 0.99:
+                    x_markers.append({"x": CL + xf * CW, "label": label})
+
+            # Yesterday ghost line: shift timestamps by +1 day to overlay on today's x-axis
+            if yest_points:
+                yest_svg_pts = [(xp_ts(t.timestamp() + 86400), yp(v)) for t, v in yest_points]
+                yesterday_polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y in yest_svg_pts)
+        else:
+            # X-axis date labels
+            n_days = (points[-1][0] - points[0][0]).days
+            step = (
+                7
+                if n_days <= 35
+                else 14
+                if n_days <= 100
+                else 30
+                if n_days <= 200
+                else 60
+                if n_days <= 400
+                else 90
+                if n_days <= 800
+                else 365
+            )
+            seen_years: set[int] = set()
+            cur = points[0][0].date() + timedelta(days=step)
+            last_d = points[-1][0].date()
+            while cur <= last_d:
+                tm = datetime(cur.year, cur.month, cur.day, tzinfo=timezone.utc)
+                xf = (tm.timestamp() - t0) / t_span
+                if 0.02 <= xf <= 0.97:
+                    if step >= 365:
+                        label = str(cur.year)
+                    elif step >= 28:
+                        label = (
+                            cur.strftime("%b '%y")
+                            if cur.year not in seen_years
+                            else cur.strftime("%b")
+                        )
+                    else:
+                        label = cur.strftime("%-m/%-d")
+                    seen_years.add(cur.year)
+                    x_markers.append({"x": CL + xf * CW, "label": label})
+                cur += timedelta(days=step)
 
         # Y-axis value labels (4 gridlines)
         for i in range(4):
@@ -487,6 +545,8 @@ from(bucket: "portfolio")
             "svg_h": SVG_H,
             "polyline": polyline,
             "fill_path": fill_path,
+            "yesterday_polyline": yesterday_polyline,
+            "is_intraday": is_intraday,
             "x_markers": x_markers,
             "y_markers": y_markers,
             "perf_line_y": perf_line_y,
