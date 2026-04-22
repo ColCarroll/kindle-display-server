@@ -4,16 +4,21 @@
 {% block header %}Portfolio{% endblock %}
 
 {% block content %}
-<div class="pf-top" hx-boost="true" hx-target="body" hx-swap="innerHTML" hx-select="body" hx-push-url="true">
-    <a href="/" class="pf-back" hx-boost="false">← Dashboard</a>
+<div id="pf-content">
+
+<div class="pf-top">
+    <a href="/">← Dashboard</a>
     <div class="pf-range-toggle">
         {% for key, opt in range_options.items() %}
         <a href="/portfolio?range={{ key }}{% if account %}&account={{ account }}{% endif %}"
-           class="pf-range-btn{% if not custom_range and key == range %} active{% endif %}">{{ opt.label }}</a>
+           class="pf-range-btn{% if not custom_range and key == range %} active{% endif %}"
+           hx-get="/portfolio?range={{ key }}{% if account %}&account={{ account }}{% endif %}"
+           hx-target="#pf-content" hx-select="#pf-content" hx-swap="outerHTML" hx-push-url="true">{{ opt.label }}</a>
         {% endfor %}
         <details class="pf-custom-range">
             <summary class="pf-range-btn{% if custom_range %} active{% endif %}">Custom</summary>
-            <form class="pf-date-form" method="get" action="/portfolio">
+            <form class="pf-date-form" method="get" action="/portfolio"
+                  hx-get="/portfolio" hx-target="#pf-content" hx-select="#pf-content" hx-swap="outerHTML" hx-push-url="true">
                 {% if account %}<input type="hidden" name="account" value="{{ account }}">{% endif %}
                 <input type="date" name="start" value="{{ start }}" max="{{ today }}">
                 <span>–</span>
@@ -33,9 +38,11 @@
     <div class="pf-value">{{ current_value }}</div>
     {% if account_name %}
     <div class="pf-account-label">
-        {{ account_name }} &mdash; <a href="/portfolio?range={{ range }}{% if custom_range %}&start={{ start }}&end={{ end }}{% endif %}" class="pf-clear-filter"
+        {{ account_name }} &mdash;
+        <a href="/portfolio?range={{ range }}{% if custom_range %}&start={{ start }}&end={{ end }}{% endif %}"
+           class="pf-clear-filter"
            hx-get="/portfolio?range={{ range }}{% if custom_range %}&start={{ start }}&end={{ end }}{% endif %}"
-           hx-target="body" hx-swap="innerHTML" hx-select="body" hx-push-url="true">All accounts</a>
+           hx-target="#pf-content" hx-select="#pf-content" hx-swap="outerHTML" hx-push-url="true">All accounts</a>
     </div>
     {% endif %}
     {% if perf_pct is not none %}
@@ -112,7 +119,7 @@
             {% set filter_url = "/portfolio?range=" ~ range ~ ("&start=" ~ start ~ "&end=" ~ end if custom_range else "") %}
             {% set row_href = filter_url if a.selected else filter_url ~ "&account=" ~ a.id %}
             <tr class="pf-acct-row{% if a.selected %} pf-acct-selected{% endif %}"
-                hx-get="{{ row_href }}" hx-target="body" hx-swap="innerHTML" hx-select="body" hx-push-url="true">
+                hx-get="{{ row_href }}" hx-target="#pf-content" hx-select="#pf-content" hx-swap="outerHTML" hx-push-url="true">
                 <td>{{ a.name }}</td>
                 <td class="pf-num pf-day-chg">
                     {% if a.has_change %}
@@ -160,4 +167,6 @@
 {% endif %}
 
 {% endif %}{# has_data #}
+
+</div>{# #pf-content #}
 {% endblock %}
