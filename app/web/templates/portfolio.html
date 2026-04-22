@@ -136,7 +136,7 @@
                 <td class="pf-num pf-day-chg">
                     {% if g.has_change %}
                     <span class="{% if g.chg_positive %}pf-pos{% else %}pf-neg{% endif %}">
-                        <span class="pf-chg-abs">{{ g.chg_abs }}<br></span><small>{{ g.chg_pct }}</small>
+                        <span class="pf-chg-abs">{{ g.chg_abs }} </span>{{ g.chg_pct }}
                     </span>
                     {% else %}
                     <span class="pf-muted">—</span>

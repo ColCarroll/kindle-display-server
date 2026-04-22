@@ -577,9 +577,13 @@ details[open] .pf-section-toggle::before {
     white-space: nowrap;
 }
 
-.pf-day-chg small {
-    font-size: 0.78rem;
-    opacity: 0.85;
+.pf-day-chg {
+    white-space: nowrap;
+}
+
+.pf-accounts-table th:first-child,
+.pf-accounts-table td:first-child {
+    width: 55%;
 }
 
 .pf-acct-value {
@@ -669,7 +673,7 @@ details[open] .pf-section-toggle::before {
 @media (max-width: 720px) {
     .pf-value { font-size: 1.5rem; }
     .pf-table { font-size: 0.85rem; }
-    .pf-chg-abs { display: none; }
+    .pf-chg-abs { display: none; }  /* hide dollar amount, keep % */
 
     /* Stack back-link and range buttons vertically */
     .pf-top {
