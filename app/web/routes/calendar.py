@@ -4,13 +4,12 @@ import asyncio
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from app.fetchers.calendar import get_events_by_day
 from app.web.auth import require_auth
+from app.web.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/web/templates")
 
 
 @router.get("/partials/calendar", response_class=HTMLResponse)

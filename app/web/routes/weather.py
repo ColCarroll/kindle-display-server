@@ -6,17 +6,16 @@ import logging
 import requests
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from app import config
 from app.cache import sqlite as db
 from app.fetchers.weather import get_processed_weather
 from app.web.auth import require_auth
+from app.web.templating import templates
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/web/templates")
 
 
 def geocode_zip(zip_code: str) -> tuple[str, str] | None:

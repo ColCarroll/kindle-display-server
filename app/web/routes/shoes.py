@@ -4,14 +4,13 @@ import asyncio
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from app.cache import sqlite as cache
 from app.fetchers.strava import fetch_athlete_gear
 from app.web.auth import require_auth
+from app.web.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/web/templates")
 
 
 @router.get("/shoes", response_class=HTMLResponse)

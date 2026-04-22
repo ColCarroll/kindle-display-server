@@ -9,15 +9,14 @@ import requests
 from fastapi import APIRouter, Depends, Query
 from fastapi.requests import Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from app.web.auth import require_auth
+from app.web.templating import templates
 
 logger = logging.getLogger(__name__)
 TZ_ET = ZoneInfo("America/New_York")
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/web/templates")
 
 INFLUX_URL = "http://koonti:8086"
 INFLUX_TOKEN = "airq-local-token"

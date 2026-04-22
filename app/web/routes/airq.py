@@ -10,25 +10,24 @@ from zoneinfo import ZoneInfo
 import requests
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from app.web.auth import require_auth
+from app.web.templating import templates
 
 logger = logging.getLogger(__name__)
 TZ_BOSTON = ZoneInfo("America/New_York")
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/web/templates")
 
 INFLUX_URL = "http://koonti:8086"
 INFLUX_TOKEN = "airq-local-token"
 INFLUX_ORG = "home"
 
 RANGE_OPTIONS = {
-    "1h":  {"delta": timedelta(hours=1),  "agg": "2m",  "gap_s": 300,   "edge_label": "1h ago"},
-    "24h": {"delta": timedelta(hours=24), "agg": "10m", "gap_s": 1800,  "edge_label": "24h ago"},
-    "7d":  {"delta": timedelta(days=7),   "agg": "1h",  "gap_s": 7200,  "edge_label": "7d ago"},
-    "30d": {"delta": timedelta(days=30),  "agg": "4h",  "gap_s": 28800, "edge_label": "30d ago"},
+    "1h": {"delta": timedelta(hours=1), "agg": "2m", "gap_s": 300, "edge_label": "1h ago"},
+    "24h": {"delta": timedelta(hours=24), "agg": "10m", "gap_s": 1800, "edge_label": "24h ago"},
+    "7d": {"delta": timedelta(days=7), "agg": "1h", "gap_s": 7200, "edge_label": "7d ago"},
+    "30d": {"delta": timedelta(days=30), "agg": "4h", "gap_s": 28800, "edge_label": "30d ago"},
 }
 DEFAULT_RANGE = "24h"
 
@@ -41,37 +40,50 @@ def _b(lo, hi, bg, label, tc):
 # Single-field metrics
 METRICS_CONFIG = [
     {
-        "field": "co2", "label": "CO₂", "unit": "ppm", "decimals": 0,
-        "min_override": 400, "max_cap": 2750,
+        "field": "co2",
+        "label": "CO₂",
+        "unit": "ppm",
+        "decimals": 0,
+        "min_override": 400,
+        "max_cap": 2750,
         "bands": [
-            _b(0,    800,  "#edf7ed", "Good",      "#2a7a2a"),
-            _b(800,  1500, "#f7f5e6", "Moderate",  "#7a6a10"),
-            _b(1500, 2500, "#f7efe6", "High",      "#8a4a10"),
+            _b(0, 800, "#edf7ed", "Good", "#2a7a2a"),
+            _b(800, 1500, "#f7f5e6", "Moderate", "#7a6a10"),
+            _b(1500, 2500, "#f7efe6", "High", "#8a4a10"),
             _b(2500, None, "#f7e9e9", "Very high", "#8a1a1a"),
         ],
     },
     {
-        "field": "temperature", "label": "Temperature", "unit": "°F", "decimals": 1,
+        "field": "temperature",
+        "label": "Temperature",
+        "unit": "°F",
+        "decimals": 1,
         "transform": lambda v: v * 9 / 5 + 32,
     },
     {"field": "humidity", "label": "Humidity", "unit": "%", "decimals": 1},
     {
-        "field": "voc", "label": "VOC", "unit": "index", "decimals": 0,
+        "field": "voc",
+        "label": "VOC",
+        "unit": "index",
+        "decimals": 0,
         "min_override": 0,
         "bands": [
-            _b(0,    300,  "#edf7ed", "Great",      "#2a7a2a"),
-            _b(300,  500,  "#f7f5e6", "Acceptable", "#7a6a10"),
-            _b(500,  1000, "#f7efe6", "High",       "#8a4a10"),
-            _b(1000, None, "#f7e9e9", "Very high",  "#8a1a1a"),
+            _b(0, 300, "#edf7ed", "Great", "#2a7a2a"),
+            _b(300, 500, "#f7f5e6", "Acceptable", "#7a6a10"),
+            _b(500, 1000, "#f7efe6", "High", "#8a4a10"),
+            _b(1000, None, "#f7e9e9", "Very high", "#8a1a1a"),
         ],
     },
     {
-        "field": "nox", "label": "NOx", "unit": "index", "decimals": 0,
+        "field": "nox",
+        "label": "NOx",
+        "unit": "index",
+        "decimals": 0,
         "min_override": 0,
         "bands": [
-            _b(0,   150, "#edf7ed", "Good",      "#2a7a2a"),
-            _b(150, 250, "#f7f5e6", "Moderate",  "#7a6a10"),
-            _b(250, 400, "#f7efe6", "High",      "#8a4a10"),
+            _b(0, 150, "#edf7ed", "Good", "#2a7a2a"),
+            _b(150, 250, "#f7f5e6", "Moderate", "#7a6a10"),
+            _b(250, 400, "#f7efe6", "High", "#8a4a10"),
             _b(400, None, "#f7e9e9", "Very high", "#8a1a1a"),
         ],
     },
@@ -79,21 +91,21 @@ METRICS_CONFIG = [
 
 # EPA AQI PM2.5 breakpoints used as reference bands on the combined PM chart
 PM_BANDS = [
-    _b(0,    12,   "#edf7ed", "Good",      "#2a7a2a"),
-    _b(12,   35.4, "#f7f5e6", "Moderate",  "#7a6a10"),
+    _b(0, 12, "#edf7ed", "Good", "#2a7a2a"),
+    _b(12, 35.4, "#f7f5e6", "Moderate", "#7a6a10"),
     _b(35.4, 55.4, "#f7efe6", "Sensitive", "#8a4a10"),
     _b(55.4, None, "#f7e9e9", "Unhealthy", "#8a1a1a"),
 ]
 
 # PM sub-fields share a single combined chart
 PM_FIELDS = [
-    {"field": "pm1_0",  "sublabel": "PM1",   "dasharray": ""},
-    {"field": "pm2_5",  "sublabel": "PM2.5", "dasharray": "7,4"},
-    {"field": "pm10_0", "sublabel": "PM10",  "dasharray": "2,5"},
+    {"field": "pm1_0", "sublabel": "PM1", "dasharray": ""},
+    {"field": "pm2_5", "sublabel": "PM2.5", "dasharray": "7,4"},
+    {"field": "pm10_0", "sublabel": "PM10", "dasharray": "2,5"},
 ]
 
 SENSORS = [
-    {"name": "AirQ α", "display": "Office",  "color": "#4477aa"},
+    {"name": "AirQ α", "display": "Office", "color": "#4477aa"},
     {"name": "AirQ β", "display": "Bedroom", "color": "#aa7733"},
 ]
 
@@ -195,7 +207,11 @@ def _to_segments(
 
 
 def _compute_x_markers(
-    t_start: datetime, t_end: datetime, t_start_s: float, t_span: float, range_key: str,
+    t_start: datetime,
+    t_end: datetime,
+    t_start_s: float,
+    t_span: float,
+    range_key: str,
 ) -> list[dict]:
     """Generate x-axis tick marks in Boston local time."""
     markers = []
@@ -206,24 +222,30 @@ def _compute_x_markers(
         interval = timedelta(minutes=15)
         m = (t_start_local.minute // 15 + 1) * 15
         current = t_start_local.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=m)
+
         def label(dt: datetime) -> str:
             return dt.astimezone(TZ_BOSTON).strftime("%H:%M")
     elif range_key == "24h":
         interval = timedelta(hours=6)
         h = (t_start_local.hour // 6 + 1) * 6
-        current = t_start_local.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=h)
+        current = t_start_local.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
+            hours=h
+        )
+
         def label(dt: datetime) -> str:
             return dt.astimezone(TZ_BOSTON).strftime("%H:%M")
     elif range_key == "7d":
         interval = timedelta(days=1)
         d = t_start_local.date() + timedelta(days=1)
         current = datetime(d.year, d.month, d.day, tzinfo=TZ_BOSTON)
+
         def label(dt: datetime) -> str:
             return dt.astimezone(TZ_BOSTON).strftime("%a")
     else:  # 30d
         interval = timedelta(days=5)
         d = t_start_local.date() + timedelta(days=1)
         current = datetime(d.year, d.month, d.day, tzinfo=TZ_BOSTON)
+
         def label(dt: datetime) -> str:
             return f"{dt.astimezone(TZ_BOSTON).strftime('%b')} {dt.astimezone(TZ_BOSTON).day}"
 
@@ -276,7 +298,11 @@ from(bucket: "airq")
         raw.setdefault(field, {}).setdefault(location, []).append((time_str, value))
 
     def _build_series(
-        field: str, sensor: dict, sublabel: str, dasharray: str, decimals: int,
+        field: str,
+        sensor: dict,
+        sublabel: str,
+        dasharray: str,
+        decimals: int,
         transform=None,
     ) -> tuple[dict, list[float]]:
         raw_pts = sorted(raw.get(field, {}).get(sensor["name"], []), key=lambda tv: tv[0])
@@ -323,20 +349,22 @@ from(bucket: "airq")
         val_range = hi - lo or 1.0
 
         processed_bands = []
-        for band in (bands or []):
+        for band in bands or []:
             b_lo = band["lo"]
             b_hi = hi if band["hi"] is None else band["hi"]
             b_lo_c = max(b_lo, lo)
             b_hi_c = min(b_hi, hi)
             if b_hi_c <= b_lo_c:
                 continue
-            processed_bands.append({
-                "y_top_frac": 1 - (b_hi_c - lo) / val_range,
-                "y_bot_frac": 1 - (b_lo_c - lo) / val_range,
-                "color": band["color"],
-                "label": band["label"],
-                "text_color": band.get("text_color", "#aaa"),
-            })
+            processed_bands.append(
+                {
+                    "y_top_frac": 1 - (b_hi_c - lo) / val_range,
+                    "y_bot_frac": 1 - (b_lo_c - lo) / val_range,
+                    "color": band["color"],
+                    "label": band["label"],
+                    "text_color": band.get("text_color", "#aaa"),
+                }
+            )
 
         # Annotate each series with the band its latest reading falls in
         for s in series:
@@ -351,9 +379,7 @@ from(bucket: "airq")
                         break
 
             # Find x-fractions of points that exceed the axis ceiling (clipped by SVG)
-            s["clipped_fracs"] = [
-                xf for seg in s.get("segments", []) for xf, v in seg if v > hi
-            ]
+            s["clipped_fracs"] = [xf for seg in s.get("segments", []) for xf, v in seg if v > hi]
 
         return {
             "label": label,
@@ -371,13 +397,21 @@ from(bucket: "airq")
         series, all_values = [], []
         for sensor in SENSORS:
             s, vals = _build_series(
-                cfg["field"], sensor, "", "", cfg["decimals"],
+                cfg["field"],
+                sensor,
+                "",
+                "",
+                cfg["decimals"],
                 transform=cfg.get("transform"),
             )
             series.append(s)
             all_values.extend(vals)
         m = _build_metric(
-            cfg["label"], cfg["unit"], cfg["decimals"], series, all_values,
+            cfg["label"],
+            cfg["unit"],
+            cfg["decimals"],
+            series,
+            all_values,
             min_override=cfg.get("min_override"),
             max_cap=cfg.get("max_cap"),
             bands=cfg.get("bands"),
@@ -392,8 +426,9 @@ from(bucket: "airq")
             s, vals = _build_series(pm["field"], sensor, pm["sublabel"], pm["dasharray"], 1)
             pm_series.append(s)
             pm_all_values.extend(vals)
-    m = _build_metric("Particulate Matter", "μg/m³", 1, pm_series, pm_all_values,
-                      min_override=0, bands=PM_BANDS)
+    m = _build_metric(
+        "Particulate Matter", "μg/m³", 1, pm_series, pm_all_values, min_override=0, bands=PM_BANDS
+    )
     if m:
         metrics.append(m)
 
@@ -418,7 +453,13 @@ async def air_quality(
         data = await asyncio.to_thread(fetch_airq_data, range)
     except Exception as e:
         logger.error(f"Failed to fetch air quality data: {e}")
-        data = {"metrics": [], "x_markers": [], "edge_label": "", "current_range": range, "error": str(e)}
+        data = {
+            "metrics": [],
+            "x_markers": [],
+            "edge_label": "",
+            "current_range": range,
+            "error": str(e),
+        }
     return templates.TemplateResponse(
         "airq.html",
         {"request": request, **data},

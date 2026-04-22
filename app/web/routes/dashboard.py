@@ -2,12 +2,11 @@
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from app.web.auth import get_current_user
+from app.web.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/web/templates")
 
 
 @router.get("/", response_class=HTMLResponse)
