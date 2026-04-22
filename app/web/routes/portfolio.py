@@ -301,13 +301,42 @@ from(bucket: "portfolio")
             if CT <= py <= CB:
                 perf_line_y = py
 
-    # --- Daily change table (only for daily-resolution ranges) ---
+    # --- Daily change table — always show trailing 30 days ---
     daily_rows = []
+    # Use by_day if already at daily resolution, otherwise fetch a dedicated 30d series
     if agg_window == "1d" and by_day:
-        sorted_days = sorted(by_day)
+        daily_src = by_day
+    else:
+        daily_src = {}
+        try:
+            acct_or_total = (
+                f'r._measurement == "account_value" and r._field == "value" and r.account_id == "{account}"'
+                if account
+                else 'r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value"'
+            )
+            daily_q = f"""
+from(bucket: "portfolio")
+  |> range(start: -30d)
+  |> filter(fn: (r) => {acct_or_total})
+  |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
+  |> sort(columns: ["_time"])
+"""
+            for row in _query_influx(daily_q):
+                try:
+                    t = _parse_ts(row["_time"])
+                    v = float(row["_value"])
+                    if v > 0:
+                        daily_src[t.date()] = (t, v)
+                except (KeyError, ValueError):
+                    continue
+        except Exception as e:
+            logger.warning("Could not fetch daily change data: %s", e)
+
+    if daily_src:
+        sorted_days = sorted(daily_src)
         for i in range(1, len(sorted_days)):
             prev_d, curr_d = sorted_days[i - 1], sorted_days[i]
-            pv, cv = by_day[prev_d][1], by_day[curr_d][1]
+            pv, cv = daily_src[prev_d][1], daily_src[curr_d][1]
             chg = cv - pv
             pct = chg / pv * 100 if pv else 0
             daily_rows.append(
