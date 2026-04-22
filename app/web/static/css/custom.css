@@ -581,25 +581,14 @@ details[open] .pf-section-toggle::before {
     white-space: nowrap;
 }
 
-.pf-accounts-table {
-    table-layout: fixed;
-}
-
-/* Change column: wide enough for "+$107,676 +7.17%" */
-.pf-accounts-table th:nth-child(2),
-.pf-accounts-table td:nth-child(2) {
-    width: 12rem;
-}
-
-/* Value column: wide enough for "$1,608,925" */
-.pf-accounts-table th:last-child,
-.pf-accounts-table td:last-child {
-    width: 7rem;
-}
-
 .pf-acct-value {
     font-variant-numeric: tabular-nums;
     font-weight: 500;
+}
+
+.pf-accounts-table {
+    width: auto;
+    table-layout: auto;
 }
 
 .pf-accounts-table .pf-num {
