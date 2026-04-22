@@ -350,14 +350,12 @@ from(bucket: "portfolio")
             )
         daily_rows = list(reversed(daily_rows))[:20]
 
-    # --- Per-account day changes from InfluxDB ---
+    # --- Per-account changes over the selected range from InfluxDB ---
     acct_day_changes: dict[str, dict] = {}
     try:
-        # Ensure at least 2 daily data points regardless of chart range
-        acct_flux_range = flux_range if agg_window == "1d" else "start: -2d"
         acct_query = f"""
 from(bucket: "portfolio")
-  |> range({acct_flux_range})
+  |> range({flux_range})
   |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value")
   |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
