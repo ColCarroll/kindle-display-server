@@ -666,11 +666,38 @@ details[open] .pf-section-toggle::before {
     font-size: 0.85rem;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 720px) {
     .pf-value { font-size: 1.5rem; }
-    .pf-table { font-size: 0.8rem; }
-    .pf-col-alloc { display: none; }
+    .pf-table { font-size: 0.85rem; }
     .pf-chg-abs { display: none; }
+
+    /* Stack back-link and range buttons vertically */
+    .pf-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.4rem;
+    }
+
+    /* Range buttons fill full width evenly */
+    .pf-range-toggle {
+        width: 100%;
+        flex-wrap: nowrap;
+    }
+    .pf-range-toggle > a.pf-range-btn,
+    .pf-range-toggle > details.pf-custom-range {
+        flex: 1;
+        min-width: 0;
+    }
+    .pf-range-toggle > a.pf-range-btn {
+        text-align: center;
+        padding: 0.3rem 0.2rem;
+    }
+    .pf-range-toggle > details.pf-custom-range > summary.pf-range-btn {
+        width: 100%;
+        text-align: center;
+        padding: 0.3rem 0.2rem;
+        box-sizing: border-box;
+    }
 }
 
 /* ── Portfolio mini widget (dashboard) ── */

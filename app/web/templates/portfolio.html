@@ -123,7 +123,6 @@
             <tr>
                 <th>Account</th>
                 <th class="pf-num">{{ change_label }}</th>
-                <th class="pf-num pf-col-alloc">% of total</th>
                 <th class="pf-num">Value</th>
             </tr>
         </thead>
@@ -143,7 +142,6 @@
                     <span class="pf-muted">—</span>
                     {% endif %}
                 </td>
-                <td class="pf-num pf-col-alloc pf-muted">{{ g.pct_fmt }}</td>
                 <td class="pf-num pf-acct-value">{{ g.value_fmt }}</td>
             </tr>
             {% for a in g.accounts %}
@@ -162,7 +160,6 @@
                     <span class="pf-muted">—</span>
                     {% endif %}
                 </td>
-                <td class="pf-num pf-col-alloc pf-muted">{{ a.pct_fmt }}</td>
                 <td class="pf-num pf-acct-value">{{ a.value_fmt }}</td>
             </tr>
             {% endfor %}
