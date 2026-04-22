@@ -25,10 +25,10 @@ INFLUX_ORG = "home"
 PORTFOLIO_API = "http://koonti:8087"
 
 RANGE_OPTIONS = {
-    "1d": {"flux": "-1d", "label": "1D"},
-    "1w": {"flux": "-7d", "label": "1W"},
-    "1m": {"flux": "-30d", "label": "1M"},
-    "1y": {"flux": "-365d", "label": "1Y"},
+    "1d": {"flux": "-1d", "label": "1D", "agg": "10m"},
+    "1w": {"flux": "-7d", "label": "1W", "agg": "1h"},
+    "1m": {"flux": "-30d", "label": "1M", "agg": "1d"},
+    "1y": {"flux": "-365d", "label": "1Y", "agg": "1d"},
 }
 DEFAULT_RANGE = "1m"
 
@@ -121,19 +121,23 @@ async def portfolio_page(
             f"start: {start_date.isoformat()}T00:00:00Z, "
             f"stop: {(end_date + timedelta(days=1)).isoformat()}T00:00:00Z"
         )
+        n_days = (end_date - start_date).days if custom_range else 365
+        agg_window = "10m" if n_days <= 1 else "1h" if n_days <= 7 else "1d"
     else:
         if time_range not in RANGE_OPTIONS:
             time_range = DEFAULT_RANGE
-        flux_range = f"start: {RANGE_OPTIONS[time_range]['flux']}"
+        opt = RANGE_OPTIONS[time_range]
+        flux_range = f"start: {opt['flux']}"
+        agg_window = opt["agg"]
         start_date = None
         end_date = None
 
-    # --- Fetch portfolio_value "all" daily time series ---
+    # --- Fetch portfolio_value "all" time series ---
     query = f"""
 from(bucket: "portfolio")
   |> range({flux_range})
   |> filter(fn: (r) => r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value")
-  |> aggregateWindow(every: 1d, fn: last, createEmpty: false)
+  |> aggregateWindow(every: {agg_window}, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
 """
     try:
@@ -142,19 +146,31 @@ from(bucket: "portfolio")
         logger.error("InfluxDB query failed: %s", e)
         rows = []
 
-    # Parse and deduplicate (keep one value per UTC calendar date)
+    # Parse rows; for daily resolution deduplicate by UTC date, otherwise keep all
     by_day: dict[date, tuple[datetime, float]] = {}
-    for row in rows:
-        try:
-            t = _parse_ts(row["_time"])
-            v = float(row["_value"])
-            if v > 0:
-                d = t.date()  # UTC calendar date
-                by_day[d] = (t, v)
-        except (KeyError, ValueError):
-            continue
-
-    points: list[tuple[datetime, float]] = [by_day[d] for d in sorted(by_day)]
+    points: list[tuple[datetime, float]] = []
+    if agg_window == "1d":
+        for row in rows:
+            try:
+                t = _parse_ts(row["_time"])
+                v = float(row["_value"])
+                if v > 0:
+                    by_day[t.date()] = (t, v)
+            except (KeyError, ValueError):
+                continue
+        points = [by_day[d] for d in sorted(by_day)]
+    else:
+        seen: set[datetime] = set()
+        for row in rows:
+            try:
+                t = _parse_ts(row["_time"])
+                v = float(row["_value"])
+                if v > 0 and t not in seen:
+                    seen.add(t)
+                    points.append((t, v))
+            except (KeyError, ValueError):
+                continue
+        points.sort()
 
     # --- Performance stats ---
     perf_pct = perf_abs = current_value = start_value = None
@@ -247,31 +263,34 @@ from(bucket: "portfolio")
             if CT <= py <= CB:
                 perf_line_y = py
 
-    # --- Daily change table ---
-    sorted_days = sorted(by_day)
+    # --- Daily change table (only for daily-resolution ranges) ---
     daily_rows = []
-    for i in range(1, len(sorted_days)):
-        prev_d, curr_d = sorted_days[i - 1], sorted_days[i]
-        pv, cv = by_day[prev_d][1], by_day[curr_d][1]
-        chg = cv - pv
-        pct = chg / pv * 100 if pv else 0
-        daily_rows.append(
-            {
-                "date": curr_d.strftime("%b %-d, %Y"),
-                "value": _fmt_dollars_full(cv),
-                "chg_abs": _fmt_signed(chg),
-                "chg_pct": f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%",
-                "positive": chg >= 0,
-            }
-        )
-    daily_rows = list(reversed(daily_rows))[:20]
+    if agg_window == "1d" and by_day:
+        sorted_days = sorted(by_day)
+        for i in range(1, len(sorted_days)):
+            prev_d, curr_d = sorted_days[i - 1], sorted_days[i]
+            pv, cv = by_day[prev_d][1], by_day[curr_d][1]
+            chg = cv - pv
+            pct = chg / pv * 100 if pv else 0
+            daily_rows.append(
+                {
+                    "date": curr_d.strftime("%b %-d, %Y"),
+                    "value": _fmt_dollars_full(cv),
+                    "chg_abs": _fmt_signed(chg),
+                    "chg_pct": f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%",
+                    "positive": chg >= 0,
+                }
+            )
+        daily_rows = list(reversed(daily_rows))[:20]
 
     # --- Per-account day changes from InfluxDB ---
     acct_day_changes: dict[str, dict] = {}
     try:
+        # Ensure at least 2 daily data points regardless of chart range
+        acct_flux_range = flux_range if agg_window == "1d" else "start: -2d"
         acct_query = f"""
 from(bucket: "portfolio")
-  |> range({flux_range})
+  |> range({acct_flux_range})
   |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value")
   |> aggregateWindow(every: 1d, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
