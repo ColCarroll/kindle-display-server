@@ -25,14 +25,12 @@ INFLUX_ORG = "home"
 PORTFOLIO_API = "http://koonti:8087"
 
 RANGE_OPTIONS = {
+    "1d": {"flux": "-1d", "label": "1D"},
+    "1w": {"flux": "-7d", "label": "1W"},
     "1m": {"flux": "-30d", "label": "1M"},
-    "3m": {"flux": "-90d", "label": "3M"},
-    "6m": {"flux": "-180d", "label": "6M"},
     "1y": {"flux": "-365d", "label": "1Y"},
-    "3y": {"flux": "-1095d", "label": "3Y"},
-    "all": {"flux": "-20y", "label": "All"},
 }
-DEFAULT_RANGE = "1y"
+DEFAULT_RANGE = "1m"
 
 # SVG chart layout constants
 CL, CT = 72, 16
@@ -271,9 +269,9 @@ from(bucket: "portfolio")
     # --- Per-account day changes from InfluxDB ---
     acct_day_changes: dict[str, dict] = {}
     try:
-        acct_query = """
+        acct_query = f"""
 from(bucket: "portfolio")
-  |> range(start: -3d)
+  |> range({flux_range})
   |> filter(fn: (r) => r._measurement == "account_value" and r._field == "value")
   |> aggregateWindow(every: 1d, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
@@ -295,30 +293,16 @@ from(bucket: "portfolio")
         for acct_id, vals in by_acct_ts.items():
             vals.sort()
             if len(vals) >= 2:
-                prev_v, curr_v = vals[-2][1], vals[-1][1]
-                chg = curr_v - prev_v
-                pct = chg / prev_v * 100 if prev_v else 0.0
+                start_v, end_v = vals[0][1], vals[-1][1]
+                chg = end_v - start_v
+                pct = chg / start_v * 100 if start_v else 0.0
             elif vals:
                 chg, pct = 0.0, 0.0
             else:
                 continue
             acct_day_changes[acct_id] = {"chg": chg, "pct": pct}
     except Exception as e:
-        logger.warning("Could not fetch account day changes: %s", e)
-
-    # Badge colours and abbreviations by account type
-    type_badge: dict[str, tuple[str, str]] = {
-        "checking": ("CHK", "#4285f4"),
-        "hysa": ("HYSA", "#1a73e8"),
-        "savings": ("SAV", "#1a73e8"),
-        "401k": ("401k", "#34a853"),
-        "403b": ("403b", "#2e7d32"),
-        "hsa": ("HSA", "#00897b"),
-        "taxable": ("BROK", "#f9ab00"),
-        "roth_ira": ("ROTH", "#9c27b0"),
-        "ira": ("IRA", "#7b1fa2"),
-        "other": ("—", "#9e9e9e"),
-    }
+        logger.warning("Could not fetch account changes: %s", e)
 
     # --- Account breakdown ---
     accounts: list[dict] = []
@@ -331,29 +315,22 @@ from(bucket: "portfolio")
         for a in raw_accounts:
             v = a.get("value") or 0.0
             acct_id = str(a.get("id", ""))
-            badge_label, badge_color = type_badge.get(
-                (a.get("type") or "other").lower(), ("—", "#9e9e9e")
-            )
-            day = acct_day_changes.get(acct_id, {})
-            chg = day.get("chg", None)
-            pct = day.get("pct", None)
+            rng = acct_day_changes.get(acct_id, {})
+            chg = rng.get("chg", None)
+            pct = rng.get("pct", None)
             accounts.append(
                 {
                     "name": a.get("name", ""),
                     "type": a.get("type", ""),
-                    "owner": a.get("owner", ""),
                     "value": v,
                     "value_fmt": _fmt_dollars_full(v),
-                    "badge_label": badge_label,
-                    "badge_color": badge_color,
-                    "pct_of_total": v / total_acct_value * 100 if total_acct_value else 0,
                     "pct_fmt": f"{v / total_acct_value * 100:.1f}%" if total_acct_value else "—",
-                    "day_chg_abs": _fmt_signed(chg) if chg is not None else "—",
-                    "day_chg_pct": (f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%")
+                    "chg_abs": _fmt_signed(chg) if chg is not None else "—",
+                    "chg_pct": (f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%")
                     if pct is not None
                     else "—",
-                    "day_positive": (chg or 0) >= 0,
-                    "has_day_change": chg is not None,
+                    "chg_positive": (chg or 0) >= 0,
+                    "has_change": chg is not None,
                 }
             )
         accounts.sort(key=lambda x: x["value"], reverse=True)
@@ -369,6 +346,9 @@ from(bucket: "portfolio")
             "start": start or "",
             "end": end or today.isoformat(),
             "range_options": RANGE_OPTIONS,
+            "change_label": "Change"
+            if custom_range
+            else RANGE_OPTIONS.get(time_range, {}).get("label", "") + " change",
             # Stats
             "current_value": _fmt_dollars_full(current_value) if current_value else "—",
             "perf_pct": (f"+{perf_pct:.2f}%" if perf_pct >= 0 else f"{perf_pct:.2f}%")

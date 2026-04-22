@@ -94,8 +94,7 @@
         <thead>
             <tr>
                 <th>Account</th>
-                <th>Owner</th>
-                <th class="pf-num">Day change</th>
+                <th class="pf-num">{{ change_label }}</th>
                 <th class="pf-num">% of total</th>
                 <th class="pf-num">Value</th>
             </tr>
@@ -103,15 +102,11 @@
         <tbody>
             {% for a in accounts %}
             <tr>
-                <td class="pf-acct-name-cell">
-                    <span class="pf-badge" style="background:{{ a.badge_color }}">{{ a.badge_label }}</span>
-                    <span class="pf-acct-name">{{ a.name }}</span>
-                </td>
-                <td class="pf-muted pf-owner">{{ a.owner }}</td>
+                <td>{{ a.name }}</td>
                 <td class="pf-num pf-day-chg">
-                    {% if a.has_day_change %}
-                    <span class="{% if a.day_positive %}pf-pos{% else %}pf-neg{% endif %}">
-                        {{ a.day_chg_abs }}<br><small>{{ a.day_chg_pct }}</small>
+                    {% if a.has_change %}
+                    <span class="{% if a.chg_positive %}pf-pos{% else %}pf-neg{% endif %}">
+                        {{ a.chg_abs }}<br><small>{{ a.chg_pct }}</small>
                     </span>
                     {% else %}
                     <span class="pf-muted">—</span>
