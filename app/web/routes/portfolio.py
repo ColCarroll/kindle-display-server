@@ -486,11 +486,11 @@ from(bucket: "portfolio")
     )
 
 
-# SVG layout for the mini sparkline (no y-axis)
-_ML, _MT = 4, 4
-_MW, _MH = 472, 72
-_MR, _MB = _ML + _MW, _MT + _MH
-_SVG_MW, _SVG_MH = _MR + 4, _MB + 4
+# SVG layout matching other dashboard charts (900-wide viewBox, no y-axis labels)
+_MCL, _MCT = 12, 16          # left/top: small left margin for y-axis ticks, no labels
+_MCW, _MCH = 876, 200        # chart content area
+_MCR, _MCB = _MCL + _MCW, _MCT + _MCH
+_MSVG_W, _MSVG_H = _MCR + 12, _MCB + 30   # 30px bottom margin for x-axis labels
 
 
 @router.get("/partials/portfolio", response_class=HTMLResponse)
@@ -552,7 +552,7 @@ from(bucket: "portfolio")
         p, c = sorted_2d[-2], sorted_2d[-1]
         day_chg = (c - p) / p * 100 if p else None
 
-    # SVG sparkline — no axes, no labels
+    # SVG geometry
     t0 = points_1m[0][0].timestamp()
     t1 = points_1m[-1][0].timestamp()
     t_span = t1 - t0 or 1.0
@@ -561,19 +561,34 @@ from(bucket: "portfolio")
     v_hi = max(vals) * 1.005
     v_span = v_hi - v_lo or 1.0
 
-    def xp(t: datetime) -> float:
-        return _ML + (t.timestamp() - t0) / t_span * _MW
+    def mxp(t: datetime) -> float:
+        return _MCL + (t.timestamp() - t0) / t_span * _MCW
 
-    def yp(v: float) -> float:
-        return _MT + (1.0 - (v - v_lo) / v_span) * _MH
+    def myp(v: float) -> float:
+        return _MCT + (1.0 - (v - v_lo) / v_span) * _MCH
 
-    svg_pts = [(xp(t), yp(v)) for t, v in points_1m]
+    svg_pts = [(mxp(t), myp(v)) for t, v in points_1m]
     mini_polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y in svg_pts)
     mini_fill = (
-        f"M {svg_pts[0][0]:.1f},{_MB} "
+        f"M {svg_pts[0][0]:.1f},{_MCB} "
         + " ".join(f"L {x:.1f},{y:.1f}" for x, y in svg_pts)
-        + f" L {svg_pts[-1][0]:.1f},{_MB} Z"
+        + f" L {svg_pts[-1][0]:.1f},{_MCB} Z"
     )
+
+    # Y-axis gridlines (no labels — values are censored)
+    y_gridlines = [_MCT + (1.0 - i / 3) * _MCH for i in range(4)]
+
+    # X-axis date markers every 7 days
+    x_markers: list[dict] = []
+    cur_d = points_1m[0][0].date() + timedelta(days=7)
+    last_d = points_1m[-1][0].date()
+    while cur_d <= last_d:
+        tm = datetime(cur_d.year, cur_d.month, cur_d.day, tzinfo=timezone.utc)
+        xf = (tm.timestamp() - t0) / t_span
+        if 0.02 <= xf <= 0.97:
+            x_markers.append({"x": _MCL + xf * _MCW, "label": cur_d.strftime("%-m/%-d")})
+        cur_d += timedelta(days=7)
+
     perf_positive = month_chg >= 0
 
     def _fmt_pct(v: float) -> str:
@@ -584,10 +599,16 @@ from(bucket: "portfolio")
         "partials/portfolio_mini.html",
         {
             "has_data": True,
-            "svg_w": _SVG_MW,
-            "svg_h": _SVG_MH,
+            "svg_w": _MSVG_W,
+            "svg_h": _MSVG_H,
+            "MCL": _MCL,
+            "MCT": _MCT,
+            "MCR": _MCR,
+            "MCB": _MCB,
             "polyline": mini_polyline,
             "fill_path": mini_fill,
+            "y_gridlines": y_gridlines,
+            "x_markers": x_markers,
             "perf_positive": perf_positive,
             "month_chg_pct": _fmt_pct(month_chg),
             "month_positive": month_chg >= 0,

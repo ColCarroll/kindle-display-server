@@ -1,27 +1,64 @@
 {% if not has_data %}
 <p style="color:#aaa;font-size:0.9rem;font-style:italic;">No portfolio data.</p>
 {% else %}
-<svg viewBox="0 0 {{ svg_w }} {{ svg_h }}" class="pf-mini-chart" role="img" aria-label="Portfolio 1-month sparkline">
-    <defs>
-        <linearGradient id="pf-mini-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.14"/>
-            <stop offset="100%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.01"/>
-        </linearGradient>
-    </defs>
-    <path d="{{ fill_path }}" fill="url(#pf-mini-grad)"/>
-    <polyline points="{{ polyline }}"
-              fill="none"
-              stroke="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}"
-              stroke-width="1.5"
-              stroke-linejoin="round"
-              stroke-linecap="round"/>
-</svg>
-<div class="pf-mini-stats">
-    <span class="pf-mini-label">Day</span>
-    <span class="pf-mini-val {% if day_positive %}pf-pos{% else %}pf-neg{% endif %}">{{ day_chg_pct if day_chg_pct is not none else "—" }}</span>
-    <span class="pf-mini-sep">·</span>
-    <span class="pf-mini-label">Month</span>
-    <span class="pf-mini-val {% if month_positive %}pf-pos{% else %}pf-neg{% endif %}">{{ month_chg_pct }}</span>
-    <a href="/portfolio" class="pf-mini-link">Portfolio →</a>
+
+<div class="strava-stats" style="margin-bottom:0.5rem;">
+    <div class="strava-stat">
+        <div class="strava-stat-value"><strong><a href="/portfolio" style="color:inherit;text-decoration:none;">Portfolio</a></strong></div>
+    </div>
 </div>
+
+<div class="pf-mini-chart-container">
+    <svg viewBox="0 0 {{ svg_w }} {{ svg_h }}" class="pf-mini-chart" preserveAspectRatio="xMidYMid meet">
+        <defs>
+            <clipPath id="pf-mini-clip">
+                <rect x="{{ MCL }}" y="{{ MCT }}" width="{{ MCR - MCL }}" height="{{ MCB - MCT }}"/>
+            </clipPath>
+            <linearGradient id="pf-mini-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.12"/>
+                <stop offset="100%" stop-color="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}" stop-opacity="0.01"/>
+            </linearGradient>
+        </defs>
+
+        {# Y-axis gridlines (no labels) #}
+        {% for y in y_gridlines %}
+        <line x1="{{ MCL }}" y1="{{ y }}" x2="{{ MCR }}" y2="{{ y }}" stroke="#ebebeb" stroke-width="1"/>
+        {% endfor %}
+
+        {# Left y-axis tick marks #}
+        {% for y in y_gridlines %}
+        <line x1="{{ MCL - 4 }}" y1="{{ y }}" x2="{{ MCL }}" y2="{{ y }}" stroke="#ccc" stroke-width="1"/>
+        {% endfor %}
+
+        {# Fill and line #}
+        <path d="{{ fill_path }}" fill="url(#pf-mini-grad)" clip-path="url(#pf-mini-clip)"/>
+        <polyline points="{{ polyline }}"
+                  fill="none"
+                  stroke="{% if perf_positive %}#2a7a2a{% else %}#c44{% endif %}"
+                  stroke-width="1.8"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                  clip-path="url(#pf-mini-clip)"/>
+
+        {# X-axis border #}
+        <line x1="{{ MCL }}" y1="{{ MCB }}" x2="{{ MCR }}" y2="{{ MCB }}" stroke="#ddd" stroke-width="1"/>
+
+        {# X-axis date labels #}
+        {% for m in x_markers %}
+        <text x="{{ m.x }}" y="{{ MCB + 18 }}" font-size="18" fill="#aaa" text-anchor="middle">{{ m.label }}</text>
+        {% endfor %}
+    </svg>
+</div>
+
+<div class="strava-stats">
+    <div class="strava-stat">
+        <div class="strava-stat-value {% if day_positive %}pf-pos{% else %}pf-neg{% endif %}">{{ day_chg_pct if day_chg_pct is not none else "—" }}</div>
+        <div class="strava-stat-label">day</div>
+    </div>
+    <div class="strava-stat">
+        <div class="strava-stat-value {% if month_positive %}pf-pos{% else %}pf-neg{% endif %}">{{ month_chg_pct }}</div>
+        <div class="strava-stat-label">month</div>
+    </div>
+</div>
+
 {% endif %}
