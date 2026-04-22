@@ -518,6 +518,10 @@ details[open] .pf-section-toggle::before {
     white-space: nowrap;
 }
 
+.pf-table th.pf-num {
+    text-align: right;
+}
+
 .pf-table td {
     padding: 0.3rem 0.5rem;
     border-bottom: 1px solid #f0f0f0;
@@ -580,6 +584,8 @@ details[open] .pf-section-toggle::before {
 .pf-day-chg {
     white-space: nowrap;
 }
+
+.pf-chg-mobile { display: none; }
 
 .pf-acct-value {
     font-variant-numeric: tabular-nums;
@@ -673,7 +679,8 @@ details[open] .pf-section-toggle::before {
 @media (max-width: 720px) {
     .pf-value { font-size: 1.5rem; }
     .pf-table { font-size: 0.85rem; }
-    .pf-chg-abs { display: none; }  /* hide dollar amount, keep % */
+    .pf-chg-desktop { display: none; }
+    .pf-chg-mobile { display: inline; }
 
     /* Stack back-link and range buttons vertically */
     .pf-top {

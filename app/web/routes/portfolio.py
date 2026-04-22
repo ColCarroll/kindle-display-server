@@ -499,6 +499,7 @@ from(bucket: "portfolio")
                     "chg_pct": (f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%")
                     if pct is not None
                     else "—",
+                    "chg_pct_short": f"{abs(pct):.1f}%" if pct is not None else "—",
                     "chg_positive": (chg or 0) >= 0,
                     "has_change": chg is not None,
                     "selected": acct_id == account,
@@ -537,6 +538,7 @@ from(bucket: "portfolio")
                     "chg_pct": (f"+{total_pct:.2f}%" if total_pct >= 0 else f"{total_pct:.2f}%")
                     if total_pct is not None
                     else "—",
+                    "chg_pct_short": f"{abs(total_pct):.1f}%" if total_pct is not None else "—",
                     "chg_positive": (total_chg or 0) >= 0,
                     "has_change": total_chg is not None,
                     "accounts": cat_accts,
