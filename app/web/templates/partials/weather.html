@@ -123,16 +123,18 @@
                 </text>
                 {% endif %}
 
-                <!-- Feels-like temperature line (wind chill=blue, heat index=red) -->
-                {% set first_feels = temps[0].feels_like if temps else 0 %}
-                {% set first_temp = temps[0].temp if temps else 0 %}
-                {% set feels_color = '#3377cc' if first_feels <= first_temp else '#cc3333' %}
-                <polyline
-                    points="{% for hour in temps %}{{ chart_left + loop.index0 * hour_width + hour_width/2 }},{{ chart_top + chart_height - ((hour.feels_like - min_temp) / temp_range * chart_height) }} {% endfor %}"
-                    fill="none"
-                    stroke="{{ feels_color }}"
+                <!-- Feels-like temperature line (wind chill=blue, heat index=red), colored per segment -->
+                {% for hour in temps[1:] %}
+                {% set prev = temps[loop.index0] %}
+                <line
+                    x1="{{ chart_left + loop.index0 * hour_width + hour_width/2 }}"
+                    y1="{{ chart_top + chart_height - ((prev.feels_like - min_temp) / temp_range * chart_height) }}"
+                    x2="{{ chart_left + (loop.index0 + 1) * hour_width + hour_width/2 }}"
+                    y2="{{ chart_top + chart_height - ((hour.feels_like - min_temp) / temp_range * chart_height) }}"
+                    stroke="{% if hour.feels_like <= hour.temp %}#3377cc{% else %}#cc3333{% endif %}"
                     stroke-width="1.5"
                     stroke-opacity="0.7"/>
+                {% endfor %}
 
                 <!-- Temperature line -->
                 <polyline
