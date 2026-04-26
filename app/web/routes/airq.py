@@ -29,7 +29,7 @@ RANGE_OPTIONS = {
     "7d": {"delta": timedelta(days=7), "agg": "1h", "gap_s": 7200, "edge_label": "7d ago"},
     "30d": {"delta": timedelta(days=30), "agg": "4h", "gap_s": 28800, "edge_label": "30d ago"},
 }
-DEFAULT_RANGE = "24h"
+DEFAULT_RANGE = "7d"
 
 
 def _b(lo, hi, bg, label, tc):
