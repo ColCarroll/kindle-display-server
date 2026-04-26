@@ -20,7 +20,7 @@ async def shoes_page(
     synced: int | None = None,
     msg: str | None = None,
 ):
-    shoes = cache.get_shoes(include_retired=True)
+    shoes = cache.get_shoes(include_retired=False)
     local_miles = cache.get_shoe_local_miles()
     for shoe in shoes:
         shoe["local_miles"] = local_miles.get(shoe["strava_id"], 0.0)
