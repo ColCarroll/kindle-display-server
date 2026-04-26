@@ -49,7 +49,7 @@ def _categorize(acct: dict) -> str:
 
 
 RANGE_OPTIONS = {
-    "1d": {"flux": "-1d", "label": "1D", "agg": "10m"},
+    "1d": {"label": "1D", "agg": "10m"},  # flux range overridden to midnight UTC in route
     "1w": {"flux": "-7d", "label": "1W", "agg": "1h"},
     "1m": {"flux": "-30d", "label": "1M", "agg": "1d"},
     "1y": {"flux": "-365d", "label": "1Y", "agg": "1d"},
@@ -126,9 +126,9 @@ def _fmt_signed(v: float, full: bool = True) -> str:
 async def portfolio_page(
     request: Request,
     time_range: str = Query(default=DEFAULT_RANGE, alias="range"),
-    start: str = Query(default=None),
-    end: str = Query(default=None),
-    account: str = Query(default=None),
+    start: str | None = Query(default=None),
+    end: str | None = Query(default=None),
+    account: str | None = Query(default=None),
     user=Depends(require_auth),  # noqa: B008
 ):
     # Validate account param — must be a positive integer string
