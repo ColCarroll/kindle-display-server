@@ -138,6 +138,7 @@ async def portfolio_page(
     custom_range = bool(start and end)
 
     if custom_range:
+        assert start and end  # guaranteed by custom_range = bool(start and end)
         try:
             start_date = date.fromisoformat(start)
             end_date = date.fromisoformat(end)
