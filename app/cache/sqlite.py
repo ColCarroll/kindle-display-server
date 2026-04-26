@@ -316,6 +316,23 @@ def get_shoes(include_retired: bool = False) -> list[dict[str, Any]]:
         conn.close()
 
 
+def retire_absent_shoes(active_strava_ids: list[str]) -> int:
+    """Mark any shoe not in active_strava_ids as retired. Returns count updated."""
+    if not active_strava_ids:
+        return 0
+    conn = _get_connection()
+    try:
+        placeholders = ",".join("?" * len(active_strava_ids))
+        cursor = conn.execute(
+            f"UPDATE shoes SET retired = 1 WHERE strava_id NOT IN ({placeholders}) AND retired = 0",
+            active_strava_ids,
+        )
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
 def get_shoe(strava_id: str) -> dict[str, Any] | None:
     """Get a single shoe by Strava ID."""
     conn = _get_connection()

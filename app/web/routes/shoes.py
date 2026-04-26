@@ -61,6 +61,7 @@ async def sync_shoes(_: str = Depends(require_auth)):
             distance_mi=shoe.get("distance", 0) * 0.000621371,
             retired=shoe.get("retired", False),
         )
+    cache.retire_absent_shoes([shoe["id"] for shoe in gear])
     return RedirectResponse(url=f"/shoes?synced={len(gear)}", status_code=303)
 
 
