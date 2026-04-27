@@ -7,6 +7,10 @@ token.json
 strava_auth_url.txt
 CLAUDE.md
 
+# Financial data exports
+*.csv
+*.xlsx
+
 # Test/development artifacts
 kindle_test*.png
 kindle_display_evolution.gif
