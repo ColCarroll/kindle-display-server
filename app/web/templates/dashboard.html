@@ -5,6 +5,14 @@
 {% block header %}{% endblock %}
 
 {% block content %}
+<nav class="dash-nav">
+    <span class="dash-nav-home">Home</span>
+    <div id="airq-status-indicator"
+         hx-get="/partials/airq-status"
+         hx-trigger="load, every 5m"
+         hx-swap="innerHTML"></div>
+</nav>
+
 <section class="dashboard-section">
     <div id="weather-container"
          hx-get="/partials/weather"

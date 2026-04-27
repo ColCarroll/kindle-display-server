@@ -464,3 +464,59 @@ async def air_quality(
         "airq.html",
         {"request": request, **data},
     )
+
+
+# Thresholds for the status indicator (worst value across both sensors wins)
+_STATUS_THRESHOLDS = {
+    "co2": {"yellow": 800, "red": 1500},
+    "voc": {"yellow": 300, "red": 300},  # any non-Good = red
+    "nox": {"yellow": 150, "red": 150},
+    "pm2_5": {"yellow": 12.0, "red": 12.0},
+}
+
+
+def _airq_status() -> str:
+    """Return 'green', 'yellow', or 'red' based on most recent sensor readings."""
+    query = """
+from(bucket: "airq")
+  |> range(start: -30m)
+  |> filter(fn: (r) => r.source == "esphome")
+  |> filter(fn: (r) => r._field == "co2" or r._field == "voc" or r._field == "nox" or r._field == "pm2_5")
+  |> last()
+"""
+    try:
+        rows = _query_influx(query)
+    except Exception:
+        return "green"  # don't alarm if InfluxDB is unreachable
+
+    # Collect worst value per field across sensors
+    latest: dict[str, float] = {}
+    for row in rows:
+        field = row.get("_field", "")
+        try:
+            val = float(row["_value"])
+        except (KeyError, ValueError):
+            continue
+        if field not in latest or val > latest[field]:
+            latest[field] = val
+
+    if not latest:
+        return "green"
+
+    status = "green"
+    for field, thresholds in _STATUS_THRESHOLDS.items():
+        val = latest.get(field)
+        if val is None:
+            continue
+        if val >= thresholds["red"]:
+            return "red"
+        if val >= thresholds["yellow"] and status == "green":
+            status = "yellow"
+
+    return status
+
+
+@router.get("/partials/airq-status", response_class=HTMLResponse)
+async def airq_status_partial(request: Request, _user: str = Depends(require_auth)):
+    status = await asyncio.to_thread(_airq_status)
+    return templates.TemplateResponse(request, "partials/airq_status.html", {"status": status})
