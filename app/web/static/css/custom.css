@@ -713,31 +713,14 @@ details[open] .pf-section-toggle::before {
     }
 }
 
-/* ── Dashboard nav ── */
-
-.dash-nav {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-    font-size: 0.9rem;
-}
-
-.dash-nav-home {
-    color: #333;
-    font-weight: 500;
-}
+/* ── Air quality status dot ── */
 
 .airq-status-link {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    color: #555;
     text-decoration: none;
-}
-
-.airq-status-link:hover {
-    color: #222;
+    vertical-align: middle;
+    margin-left: 0.4rem;
 }
 
 .airq-status-dot {
@@ -745,7 +728,6 @@ details[open] .pf-section-toggle::before {
     width: 0.55rem;
     height: 0.55rem;
     border-radius: 50%;
-    flex-shrink: 0;
 }
 
 .airq-status-green  { background: #3a9e3a; }
