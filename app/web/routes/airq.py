@@ -109,6 +109,13 @@ SENSORS = [
     {"name": "AirQ β", "display": "Bedroom", "color": "#aa7733"},
 ]
 
+# Per-sensor temperature correction (°C), calibrated against a reference thermometer.
+# Applied to the raw Celsius reading before the C→F transform.
+TEMP_OFFSETS_C: dict[str, float] = {
+    "AirQ α": -0.89,  # Office:  21.45°C raw → 20.56°C → 69°F  (2026-04-27)
+    "AirQ β": -3.45,  # Bedroom: 24.01°C raw → 20.56°C → 69°F  (2026-04-27)
+}
+
 ALL_FIELDS = [m["field"] for m in METRICS_CONFIG] + [p["field"] for p in PM_FIELDS]
 
 
@@ -304,8 +311,11 @@ from(bucket: "airq")
         dasharray: str,
         decimals: int,
         transform=None,
+        offset_c: float = 0.0,
     ) -> tuple[dict, list[float]]:
         raw_pts = sorted(raw.get(field, {}).get(sensor["name"], []), key=lambda tv: tv[0])
+        if offset_c:
+            raw_pts = [(t, v + offset_c) for t, v in raw_pts]
         pts = [(t, transform(v)) for t, v in raw_pts] if transform else raw_pts
         pts = _remove_spikes(pts)
         vals = [v for _, v in pts]
@@ -403,6 +413,7 @@ from(bucket: "airq")
                 "",
                 cfg["decimals"],
                 transform=cfg.get("transform"),
+                offset_c=TEMP_OFFSETS_C.get(sensor["name"], 0.0) if cfg["field"] == "temperature" else 0.0,
             )
             series.append(s)
             all_values.extend(vals)
