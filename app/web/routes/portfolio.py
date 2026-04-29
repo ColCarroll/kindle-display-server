@@ -310,11 +310,15 @@ from(bucket: "portfolio")
         # to keep the line away from the edges.
         vals = [v for _, v in points]
         all_vals = vals + [v for _, v in yest_points]
-        pad = 0.02 if is_intraday else 0.005
         mid = (max(all_vals) + min(all_vals)) / 2
-        half = (max(all_vals) - min(all_vals)) / 2 or mid * pad
-        v_lo = mid - half * (1 + pad) - mid * pad
-        v_hi = mid + half * (1 + pad) + mid * pad
+        if is_intraday:
+            # Center on midpoint; ensure at least $1k of headroom on each side
+            half = max((max(all_vals) - min(all_vals)) / 2, 1000)
+            v_lo = mid - half
+            v_hi = mid + half
+        else:
+            v_lo = min(all_vals) * 0.995
+            v_hi = max(all_vals) * 1.005
         v_span = v_hi - v_lo or 1.0
 
         def xp_ts(ts: float) -> float:
