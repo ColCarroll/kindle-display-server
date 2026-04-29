@@ -164,7 +164,11 @@ async def portfolio_page(
         # Using -1d would pick up yesterday evening's YNAB sync as the baseline.
         if time_range == "1d":
             today_midnight = date.today().isoformat() + "T00:00:00Z"
-            flux_range = f"start: {today_midnight}"
+            now_et = datetime.now(TZ_ET)
+            market_open_et = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+            is_weekend = now_et.weekday() >= 5
+            is_premarket = is_weekend or now_et < market_open_et
+            flux_range = "start: -2d" if is_premarket else f"start: {today_midnight}"
         else:
             flux_range = f"start: {opt['flux']}"
 
@@ -619,17 +623,17 @@ from(bucket: "portfolio")
   |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
-    query_2d = """
+    today_midnight_str = date.today().isoformat() + "T00:00:00Z"
+    query_today = f"""
 from(bucket: "portfolio")
-  |> range(start: -2d)
+  |> range(start: {today_midnight_str})
   |> filter(fn: (r) => r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value")
-  |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
     ctx: dict = {"has_data": False}
     try:
         rows_1m = _query_influx(query_1m)
-        rows_2d = _query_influx(query_2d)
+        rows_today = _query_influx(query_today)
     except Exception as e:
         logger.error("Portfolio mini query failed: %s", e)
         return templates.TemplateResponse(request, "partials/portfolio_mini.html", ctx)
@@ -652,20 +656,20 @@ from(bucket: "portfolio")
     # Monthly % change
     month_chg = (points_1m[-1][1] - points_1m[0][1]) / points_1m[0][1] * 100
 
-    # Daily % change from last two available daily points
-    by_day_2d: dict[date, float] = {}
-    for row in rows_2d:
+    # Daily % change: today's last vs today's midnight backfill point (matches 1D chart baseline)
+    today_points: list[tuple[datetime, float]] = []
+    for row in rows_today:
         try:
             t = _parse_ts(row["_time"])
             v = float(row["_value"])
             if v > 0:
-                by_day_2d[t.date()] = v
+                today_points.append((t, v))
         except (KeyError, ValueError):
             continue
-    sorted_2d = [by_day_2d[d] for d in sorted(by_day_2d)]
+    today_points.sort()
     day_chg: float | None = None
-    if len(sorted_2d) >= 2:
-        p, c = sorted_2d[-2], sorted_2d[-1]
+    if len(today_points) >= 2:
+        p, c = today_points[0][1], today_points[-1][1]
         day_chg = (c - p) / p * 100 if p else None
 
     # SVG geometry
