@@ -104,10 +104,11 @@ def _parse_ts(time_str: str) -> datetime:
     return datetime.fromisoformat(ts)
 
 
-def _fmt_dollars(v: float) -> str:
-    """Compact format for axis labels."""
+def _fmt_dollars(v: float, span: float = 0) -> str:
+    """Compact format for axis labels. Pass span to auto-select precision."""
     if abs(v) >= 1_000_000:
-        return f"${v / 1_000_000:.2f}M"
+        decimals = 3 if span < 100_000 else 2
+        return f"${v / 1_000_000:.{decimals}f}M"
     if abs(v) >= 1_000:
         return f"${v / 1_000:.0f}k"
     return f"${v:.0f}"
@@ -305,18 +306,16 @@ from(bucket: "portfolio")
             t1 = points[-1][0].timestamp()
             t_span = t1 - t0 or 1.0
 
-        # Y range: include yesterday ghost values so they stay in bounds.
-        # For intraday charts the swing is small, so use a larger padding factor
-        # to keep the line away from the edges.
         vals = [v for _, v in points]
-        all_vals = vals + [v for _, v in yest_points]
-        mid = (max(all_vals) + min(all_vals)) / 2
         if is_intraday:
-            # Center on midpoint; ensure at least $1k of headroom on each side
-            half = max((max(all_vals) - min(all_vals)) / 2, 1000)
+            # Scale to today's data only; yesterday ghost line may extend outside
+            # and will be clipped by the SVG viewBox.
+            mid = (max(vals) + min(vals)) / 2
+            half = max((max(vals) - min(vals)) / 2, 1000)
             v_lo = mid - half
             v_hi = mid + half
         else:
+            all_vals = vals + [v for _, v in yest_points]
             v_lo = min(all_vals) * 0.995
             v_hi = max(all_vals) * 1.005
         v_span = v_hi - v_lo or 1.0
@@ -394,7 +393,7 @@ from(bucket: "portfolio")
             y_markers.append(
                 {
                     "y": CT + (1.0 - frac) * CH,
-                    "label": _fmt_dollars(v_lo + frac * v_span),
+                    "label": _fmt_dollars(v_lo + frac * v_span, span=v_span),
                 }
             )
 
