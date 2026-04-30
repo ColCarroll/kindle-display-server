@@ -160,18 +160,13 @@ async def portfolio_page(
         agg_window = opt["agg"]
         start_date = None
         end_date = None
-        # For 1D, anchor to today's midnight UTC so the change baseline (points[0])
-        # matches the midnight backfill and is consistent with the account changes.
-        # Using -1d would pick up yesterday evening's YNAB sync as the baseline.
         if time_range == "1d":
             now_et = datetime.now(TZ_ET)
-            # Midnight in ET (not UTC) — after 8pm ET date.today() UTC is already tomorrow
-            today_midnight_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
-            today_midnight = today_midnight_et.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            market_open_et = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
-            is_weekend = now_et.weekday() >= 5
-            is_premarket = is_weekend or now_et < market_open_et
-            flux_range = "start: -2d" if is_premarket else f"start: {today_midnight}"
+            # Start from 2 days ago midnight ET so we always have yesterday + today
+            two_days_ago_midnight = (now_et - timedelta(days=2)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            flux_range = f"start: {two_days_ago_midnight}"
         else:
             flux_range = f"start: {opt['flux']}"
 
@@ -245,51 +240,11 @@ from(bucket: "portfolio")
     if len(points) >= 2:
         now_et = datetime.now(TZ_ET)
 
-        yest_points: list[tuple[datetime, float]] = []
-        has_market_data = False
-        has_yesterday_data = False
-        day_et = now_et
         if is_intraday:
-            market_open_ts = now_et.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
-            has_market_data = any(t.timestamp() >= market_open_ts for t, _ in points)
-
-            # X-axis spans midnight-to-midnight ET for whichever day is active
-            day_et = now_et if has_market_data else now_et - timedelta(days=1)
-            t0 = day_et.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-            t1 = day_et.replace(hour=23, minute=59, second=59, microsecond=0).timestamp()
-            t_span = t1 - t0
-
-            if has_market_data:
-                # Fetch yesterday's intraday points for the ghost line
-                try:
-                    yest_measurement = (
-                        f'r._measurement == "account_value" and r._field == "value" and r.account_id == "{account}"'
-                        if account
-                        else 'r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value"'
-                    )
-                    yest_q = f"""
-from(bucket: "portfolio")
-  |> range(start: -2d)
-  |> filter(fn: (r) => {yest_measurement})
-  |> aggregateWindow(every: 10m, fn: last, createEmpty: false, timeSrc: "_start")
-  |> sort(columns: ["_time"])
-"""
-                    yesterday_date = now_et.date() - timedelta(days=1)
-                    for row in _query_influx(yest_q):
-                        try:
-                            t = _parse_ts(row["_time"])
-                            v = float(row["_value"])
-                            if v > 0 and t.astimezone(TZ_ET).date() == yesterday_date:
-                                yest_points.append((t, v))
-                        except (KeyError, ValueError):
-                            continue
-                    yest_points.sort()
-                except Exception as e:
-                    logger.warning("Could not fetch yesterday's intraday data: %s", e)
-            else:
-                has_yesterday_data = bool(yest_points) or any(
-                    t.astimezone(TZ_ET).date() == day_et.date() for t, _ in points
-                )
+            # X-axis: data-driven from first to last point
+            t0 = points[0][0].timestamp()
+            t1 = points[-1][0].timestamp()
+            t_span = t1 - t0 or 1.0
         else:
             t0 = points[0][0].timestamp()
             t1 = points[-1][0].timestamp()
@@ -297,15 +252,13 @@ from(bucket: "portfolio")
 
         vals = [v for _, v in points]
         if is_intraday:
-            all_intraday = vals + [v for _, v in yest_points]
-            mid = (max(all_intraday) + min(all_intraday)) / 2
-            half = (max(all_intraday) - min(all_intraday)) / 2 + 500
+            mid = (max(vals) + min(vals)) / 2
+            half = (max(vals) - min(vals)) / 2 + 500
             v_lo = mid - half
             v_hi = mid + half
         else:
-            all_vals = vals + [v for _, v in yest_points]
-            v_lo = min(all_vals) * 0.995
-            v_hi = max(all_vals) * 1.005
+            v_lo = min(vals) * 0.995
+            v_hi = max(vals) * 1.005
         v_span = v_hi - v_lo or 1.0
 
         def xp_ts(ts: float) -> float:
@@ -325,17 +278,32 @@ from(bucket: "portfolio")
             + f" L {svg_pts[-1][0]:.1f},{CB} Z"
         )
 
-        if is_intraday and (has_market_data or has_yesterday_data):
-            for hour, label in [(9, "9am"), (12, "12pm"), (15, "3pm"), (18, "6pm")]:
-                marker_et = day_et.replace(hour=hour, minute=0, second=0, microsecond=0)
-                xf = (marker_et.timestamp() - t0) / t_span
+        if is_intraday:
+            # Hour labels every 6h across the data span; prefix date on the first
+            # label of each calendar day so days are distinguishable.
+            start_et = points[0][0].astimezone(TZ_ET)
+            end_et = points[-1][0].astimezone(TZ_ET)
+            seen_date: date | None = None
+            cur_et = start_et.replace(minute=0, second=0, microsecond=0)
+            # Round up to the next 6-hour mark
+            next_6h = ((cur_et.hour // 6) + 1) * 6
+            if next_6h >= 24:
+                cur_et = (cur_et + timedelta(days=1)).replace(hour=0)
+            else:
+                cur_et = cur_et.replace(hour=next_6h)
+            while cur_et <= end_et:
+                xf = (cur_et.timestamp() - t0) / t_span
                 if 0.01 <= xf <= 0.99:
+                    cur_date = cur_et.date()
+                    hour_label = cur_et.strftime("%-I%p").lower().lstrip("0") or "12am"
+                    label = (
+                        f"{cur_date.strftime('%-m/%-d')} {hour_label}"
+                        if cur_date != seen_date
+                        else hour_label
+                    )
+                    seen_date = cur_date
                     x_markers.append({"x": CL + xf * CW, "label": label})
-
-            # Ghost line only when showing today's live session
-            if has_market_data and yest_points:
-                yest_svg_pts = [(xp_ts(t.timestamp() + 86400), yp(v)) for t, v in yest_points]
-                yesterday_polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y in yest_svg_pts)
+                cur_et += timedelta(hours=6)
         else:
             # X-axis date labels
             n_days = (points[-1][0] - points[0][0]).days
