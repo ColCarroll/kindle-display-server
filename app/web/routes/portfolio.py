@@ -258,8 +258,8 @@ from(bucket: "portfolio")
             prev_close_ts = prev_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
 
             if has_market_data:
-                # Today's session — widen by 30 min each side to show pre/post-market points
-                t0 = market_open_ts - 1800
+                # Today's session — extend right by 30 min to show post-close NAV updates
+                t0 = market_open_ts
                 t1 = market_close_ts + 1800
                 t_span = t1 - t0
 
@@ -295,7 +295,7 @@ from(bucket: "portfolio")
                     prev_open_ts <= t.timestamp() <= prev_close_ts for t, _ in points
                 )
                 if has_yesterday_data:
-                    t0 = prev_open_ts - 1800
+                    t0 = prev_open_ts
                     t1 = prev_close_ts + 1800
                     t_span = t1 - t0
                 else:
@@ -311,7 +311,9 @@ from(bucket: "portfolio")
         vals = [v for _, v in points]
         if is_intraday:
             mid = (max(vals) + min(vals)) / 2
-            half = max((max(vals) - min(vals)) / 2, 1000)
+            # Always add $500 buffer beyond the actual swing so the line never
+            # touches the chart edge, regardless of how large the day's move is.
+            half = (max(vals) - min(vals)) / 2 + 500
             v_lo = mid - half
             v_hi = mid + half
         else:
