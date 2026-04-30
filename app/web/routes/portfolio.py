@@ -162,11 +162,11 @@ async def portfolio_page(
         end_date = None
         if time_range == "1d":
             now_et = datetime.now(TZ_ET)
-            # Start from 2 days ago midnight ET so we always have yesterday + today
-            two_days_ago_midnight = (now_et - timedelta(days=2)).replace(
-                hour=0, minute=0, second=0, microsecond=0
+            # Fetch 2 days back so we have both today and yesterday for the ghost line
+            two_days_ago = (now_et - timedelta(days=2)).replace(
+                hour=9, minute=0, second=0, microsecond=0
             ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            flux_range = f"start: {two_days_ago_midnight}"
+            flux_range = f"start: {two_days_ago}"
         else:
             flux_range = f"start: {opt['flux']}"
 
@@ -239,26 +239,50 @@ from(bucket: "portfolio")
 
     if len(points) >= 2:
         now_et = datetime.now(TZ_ET)
+        day_et = now_et
 
+        yest_points: list[tuple[datetime, float]] = []
+        today_points: list[tuple[datetime, float]] = []
         if is_intraday:
-            # X-axis: data-driven from first to last point
-            t0 = points[0][0].timestamp()
-            t1 = points[-1][0].timestamp()
-            t_span = t1 - t0 or 1.0
+            market_open_ts = now_et.replace(hour=9, minute=0, second=0, microsecond=0).timestamp()
+            has_market_data = any(t.timestamp() >= market_open_ts for t, _ in points)
+            # Whichever day is active gets the 9am–7pm window
+            day_et = now_et if has_market_data else now_et - timedelta(days=1)
+            t0 = day_et.replace(hour=9, minute=0, second=0, microsecond=0).timestamp()
+            t1 = day_et.replace(hour=19, minute=0, second=0, microsecond=0).timestamp()
+            t_span = t1 - t0
+
+            # Split points into today vs yesterday for ghost line
+            today_date = day_et.date()
+            today_points = [(t, v) for t, v in points if t.astimezone(TZ_ET).date() == today_date]
+            yest_date = today_date - timedelta(days=1)
+            yest_points = [(t, v) for t, v in points if t.astimezone(TZ_ET).date() == yest_date]
+
+            # Recompute perf stats using today's data only
+            if today_points:
+                start_value = today_points[0][1]
+                current_value = today_points[-1][1]
+                if start_value and start_value > 0:
+                    perf_abs = current_value - start_value
+                    perf_pct = perf_abs / start_value * 100
+                perf_positive = (perf_pct or 0) >= 0
         else:
+            has_market_data = False
             t0 = points[0][0].timestamp()
             t1 = points[-1][0].timestamp()
             t_span = t1 - t0 or 1.0
+            today_points = points
 
-        vals = [v for _, v in points]
+        vals = [v for _, v in (today_points if is_intraday else points)]
+        all_vals = vals + [v for _, v in yest_points]
         if is_intraday:
-            mid = (max(vals) + min(vals)) / 2
-            half = (max(vals) - min(vals)) / 2 + 500
+            mid = (max(all_vals) + min(all_vals)) / 2
+            half = (max(all_vals) - min(all_vals)) / 2 + 500
             v_lo = mid - half
             v_hi = mid + half
         else:
-            v_lo = min(vals) * 0.995
-            v_hi = max(vals) * 1.005
+            v_lo = min(all_vals) * 0.995
+            v_hi = max(all_vals) * 1.005
         v_span = v_hi - v_lo or 1.0
 
         def xp_ts(ts: float) -> float:
@@ -270,7 +294,8 @@ from(bucket: "portfolio")
         def yp(v: float) -> float:
             return CT + (1.0 - (v - v_lo) / v_span) * CH
 
-        svg_pts = [(xp(t), yp(v)) for t, v in points]
+        plot_pts = today_points if is_intraday else points
+        svg_pts = [(xp(t), yp(v)) for t, v in plot_pts]
         polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y in svg_pts)
         fill_path = (
             f"M {svg_pts[0][0]:.1f},{CB} "
@@ -279,31 +304,14 @@ from(bucket: "portfolio")
         )
 
         if is_intraday:
-            # Hour labels every 6h across the data span; prefix date on the first
-            # label of each calendar day so days are distinguishable.
-            start_et = points[0][0].astimezone(TZ_ET)
-            end_et = points[-1][0].astimezone(TZ_ET)
-            seen_date: date | None = None
-            cur_et = start_et.replace(minute=0, second=0, microsecond=0)
-            # Round up to the next 6-hour mark
-            next_6h = ((cur_et.hour // 6) + 1) * 6
-            if next_6h >= 24:
-                cur_et = (cur_et + timedelta(days=1)).replace(hour=0)
-            else:
-                cur_et = cur_et.replace(hour=next_6h)
-            while cur_et <= end_et:
-                xf = (cur_et.timestamp() - t0) / t_span
+            for hour, label in [(9, "9am"), (12, "12pm"), (15, "3pm"), (18, "6pm")]:
+                marker_et = day_et.replace(hour=hour, minute=0, second=0, microsecond=0)
+                xf = (marker_et.timestamp() - t0) / t_span
                 if 0.01 <= xf <= 0.99:
-                    cur_date = cur_et.date()
-                    hour_label = cur_et.strftime("%-I%p").lower().lstrip("0") or "12am"
-                    label = (
-                        f"{cur_date.strftime('%-m/%-d')} {hour_label}"
-                        if cur_date != seen_date
-                        else hour_label
-                    )
-                    seen_date = cur_date
                     x_markers.append({"x": CL + xf * CW, "label": label})
-                cur_et += timedelta(hours=6)
+            if yest_points:
+                yest_svg_pts = [(xp_ts(t.timestamp() + 86400), yp(v)) for t, v in yest_points]
+                yesterday_polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y in yest_svg_pts)
         else:
             # X-axis date labels
             n_days = (points[-1][0] - points[0][0]).days
