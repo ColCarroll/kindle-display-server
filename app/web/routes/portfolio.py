@@ -311,10 +311,9 @@ from(bucket: "portfolio")
 
         vals = [v for _, v in points]
         if is_intraday:
-            mid = (max(vals) + min(vals)) / 2
-            # Always add $500 buffer beyond the actual swing so the line never
-            # touches the chart edge, regardless of how large the day's move is.
-            half = (max(vals) - min(vals)) / 2 + 500
+            all_intraday = vals + [v for _, v in yest_points]
+            mid = (max(all_intraday) + min(all_intraday)) / 2
+            half = (max(all_intraday) - min(all_intraday)) / 2 + 500
             v_lo = mid - half
             v_hi = mid + half
         else:
