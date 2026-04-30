@@ -258,9 +258,10 @@ from(bucket: "portfolio")
             prev_close_ts = prev_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
 
             if has_market_data:
-                # Today's session — extend right by 30 min to show post-close NAV updates
+                # Today's session — extend right by 2h to capture late mutual fund NAV
+                # settlements (FXAIX etc. can take until ~6pm ET to price after close)
                 t0 = market_open_ts
-                t1 = market_close_ts + 1800
+                t1 = market_close_ts + 7200
                 t_span = t1 - t0
 
                 # Fetch yesterday's intraday points for the ghost line
@@ -296,7 +297,7 @@ from(bucket: "portfolio")
                 )
                 if has_yesterday_data:
                     t0 = prev_open_ts
-                    t1 = prev_close_ts + 1800
+                    t1 = prev_close_ts + 7200
                     t_span = t1 - t0
                 else:
                     # Weekend / no market data in range — data-driven fallback
@@ -342,7 +343,7 @@ from(bucket: "portfolio")
         if is_intraday and (has_market_data or has_yesterday_data):
             # Fixed hour labels; anchor to whichever day's window is active
             ref_et = now_et if has_market_data else now_et - timedelta(days=1)
-            for hour, label in [(10, "10am"), (12, "12pm"), (14, "2pm"), (16, "4pm")]:
+            for hour, label in [(10, "10am"), (12, "12pm"), (14, "2pm"), (16, "4pm"), (17, "5pm")]:
                 marker_et = ref_et.replace(hour=hour, minute=0, second=0, microsecond=0)
                 xf = (marker_et.timestamp() - t0) / t_span
                 if 0.01 <= xf <= 0.99:
