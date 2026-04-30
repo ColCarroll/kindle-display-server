@@ -248,22 +248,18 @@ from(bucket: "portfolio")
         yest_points: list[tuple[datetime, float]] = []
         has_market_data = False
         has_yesterday_data = False
+        day_et = now_et
         if is_intraday:
             market_open_ts = now_et.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
-            market_close_ts = now_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
             has_market_data = any(t.timestamp() >= market_open_ts for t, _ in points)
 
-            prev_et = now_et - timedelta(days=1)
-            prev_open_ts = prev_et.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
-            prev_close_ts = prev_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
+            # X-axis spans midnight-to-midnight ET for whichever day is active
+            day_et = now_et if has_market_data else now_et - timedelta(days=1)
+            t0 = day_et.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+            t1 = day_et.replace(hour=23, minute=59, second=59, microsecond=0).timestamp()
+            t_span = t1 - t0
 
             if has_market_data:
-                # Today's session — extend right by 2h to capture late mutual fund NAV
-                # settlements (FXAIX etc. can take until ~6pm ET to price after close)
-                t0 = market_open_ts
-                t1 = market_close_ts + 7200
-                t_span = t1 - t0
-
                 # Fetch yesterday's intraday points for the ghost line
                 try:
                     yest_measurement = (
@@ -291,19 +287,9 @@ from(bucket: "portfolio")
                 except Exception as e:
                     logger.warning("Could not fetch yesterday's intraday data: %s", e)
             else:
-                # Pre-market: check whether yesterday's session is in the -1d window
-                has_yesterday_data = any(
-                    prev_open_ts <= t.timestamp() <= prev_close_ts for t, _ in points
+                has_yesterday_data = bool(yest_points) or any(
+                    t.astimezone(TZ_ET).date() == day_et.date() for t, _ in points
                 )
-                if has_yesterday_data:
-                    t0 = prev_open_ts
-                    t1 = prev_close_ts + 7200
-                    t_span = t1 - t0
-                else:
-                    # Weekend / no market data in range — data-driven fallback
-                    t0 = points[0][0].timestamp()
-                    t1 = points[-1][0].timestamp()
-                    t_span = t1 - t0 or 1.0
         else:
             t0 = points[0][0].timestamp()
             t1 = points[-1][0].timestamp()
@@ -340,10 +326,8 @@ from(bucket: "portfolio")
         )
 
         if is_intraday and (has_market_data or has_yesterday_data):
-            # Fixed hour labels; anchor to whichever day's window is active
-            ref_et = now_et if has_market_data else now_et - timedelta(days=1)
-            for hour, label in [(10, "10am"), (12, "12pm"), (14, "2pm"), (16, "4pm"), (17, "5pm")]:
-                marker_et = ref_et.replace(hour=hour, minute=0, second=0, microsecond=0)
+            for hour, label in [(9, "9am"), (12, "12pm"), (15, "3pm"), (18, "6pm")]:
+                marker_et = day_et.replace(hour=hour, minute=0, second=0, microsecond=0)
                 xf = (marker_et.timestamp() - t0) / t_span
                 if 0.01 <= xf <= 0.99:
                     x_markers.append({"x": CL + xf * CW, "label": label})
