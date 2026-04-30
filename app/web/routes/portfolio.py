@@ -164,8 +164,10 @@ async def portfolio_page(
         # matches the midnight backfill and is consistent with the account changes.
         # Using -1d would pick up yesterday evening's YNAB sync as the baseline.
         if time_range == "1d":
-            today_midnight = date.today().isoformat() + "T00:00:00Z"
             now_et = datetime.now(TZ_ET)
+            # Midnight in ET (not UTC) — after 8pm ET date.today() UTC is already tomorrow
+            today_midnight_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_midnight = today_midnight_et.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             market_open_et = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
             is_weekend = now_et.weekday() >= 5
             is_premarket = is_weekend or now_et < market_open_et
@@ -629,7 +631,9 @@ from(bucket: "portfolio")
   |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
-    today_midnight_str = date.today().isoformat() + "T00:00:00Z"
+    now_et = datetime.now(TZ_ET)
+    today_midnight_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_midnight_str = today_midnight_et.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     query_today = f"""
 from(bucket: "portfolio")
   |> range(start: {today_midnight_str})
