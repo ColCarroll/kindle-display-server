@@ -256,9 +256,9 @@ from(bucket: "portfolio")
             prev_close_ts = prev_et.replace(hour=16, minute=0, second=0, microsecond=0).timestamp()
 
             if has_market_data:
-                # Today's session is live — use today's fixed window
-                t0 = market_open_ts
-                t1 = market_close_ts
+                # Today's session — widen by 30 min each side to show pre/post-market points
+                t0 = market_open_ts - 1800
+                t1 = market_close_ts + 1800
                 t_span = t1 - t0
 
                 # Fetch yesterday's intraday points for the ghost line
@@ -293,8 +293,8 @@ from(bucket: "portfolio")
                     prev_open_ts <= t.timestamp() <= prev_close_ts for t, _ in points
                 )
                 if has_yesterday_data:
-                    t0 = prev_open_ts
-                    t1 = prev_close_ts
+                    t0 = prev_open_ts - 1800
+                    t1 = prev_close_ts + 1800
                     t_span = t1 - t0
                 else:
                     # Weekend / no market data in range — data-driven fallback
@@ -308,8 +308,6 @@ from(bucket: "portfolio")
 
         vals = [v for _, v in points]
         if is_intraday:
-            # Scale to today's data only; yesterday ghost line may extend outside
-            # and will be clipped by the SVG viewBox.
             mid = (max(vals) + min(vals)) / 2
             half = max((max(vals) - min(vals)) / 2, 1000)
             v_lo = mid - half
