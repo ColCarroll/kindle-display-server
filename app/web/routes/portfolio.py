@@ -163,9 +163,12 @@ async def portfolio_page(
         if time_range == "1d":
             now_et = datetime.now(TZ_ET)
             # Fetch 2 days back so we have both today and yesterday for the ghost line
-            two_days_ago = (now_et - timedelta(days=2)).replace(
-                hour=9, minute=0, second=0, microsecond=0
-            ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            two_days_ago = (
+                (now_et - timedelta(days=2))
+                .replace(hour=9, minute=0, second=0, microsecond=0)
+                .astimezone(timezone.utc)
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+            )
             flux_range = f"start: {two_days_ago}"
         else:
             flux_range = f"start: {opt['flux']}"
@@ -232,36 +235,55 @@ from(bucket: "portfolio")
 
     # --- SVG chart geometry ---
     is_intraday = time_range == "1d" and not custom_range
+
+    # 1D baseline parameters: anchor to the active day's UTC midnight, the same boundary
+    # the daily-change-table aggregation uses. Resilient to stale pre-market writes
+    # (e.g. an off-hours YNAB sync producing a glitchy value) which would otherwise
+    # land in `today_points[0]`.
+    day_et: datetime | None = None
+    today_date_et: date | None = None
+    day_open_ts: float | None = None
+    day_midnight_utc: datetime | None = None
+    yest_close: float | None = None
+    if is_intraday and points:
+        now_et = datetime.now(TZ_ET)
+        active_open_ts = now_et.replace(hour=9, minute=0, second=0, microsecond=0).timestamp()
+        has_market_data = any(t.timestamp() >= active_open_ts for t, _ in points)
+        day_et = now_et if has_market_data else now_et - timedelta(days=1)
+        today_date_et = day_et.date()
+        day_open_ts = day_et.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
+        day_midnight_utc = datetime(
+            today_date_et.year, today_date_et.month, today_date_et.day, tzinfo=timezone.utc
+        )
+        pre_today_vals = [v for t, v in points if t < day_midnight_utc]
+        yest_close = pre_today_vals[-1] if pre_today_vals else None
+
     polyline = fill_path = yesterday_polyline = ""
     x_markers: list[dict] = []
     y_markers: list[dict] = []
     perf_line_y: float | None = None
 
     if len(points) >= 2:
-        now_et = datetime.now(TZ_ET)
-        day_et = now_et
-
         yest_points: list[tuple[datetime, float]] = []
         today_points: list[tuple[datetime, float]] = []
         if is_intraday:
-            market_open_ts = now_et.replace(hour=9, minute=0, second=0, microsecond=0).timestamp()
-            has_market_data = any(t.timestamp() >= market_open_ts for t, _ in points)
-            # Whichever day is active gets the 9am–7pm window
-            day_et = now_et if has_market_data else now_et - timedelta(days=1)
+            assert day_et and today_date_et and day_open_ts is not None
             t0 = day_et.replace(hour=9, minute=0, second=0, microsecond=0).timestamp()
             t1 = day_et.replace(hour=19, minute=0, second=0, microsecond=0).timestamp()
             t_span = t1 - t0
 
-            # Split points into today vs yesterday for ghost line
-            today_date = day_et.date()
-            today_points = [(t, v) for t, v in points if t.astimezone(TZ_ET).date() == today_date]
-            yest_date = today_date - timedelta(days=1)
+            # Drop pre-market points so a stale overnight write can't anchor the chart.
+            today_points = [
+                (t, v)
+                for t, v in points
+                if t.astimezone(TZ_ET).date() == today_date_et and t.timestamp() >= day_open_ts
+            ]
+            yest_date = today_date_et - timedelta(days=1)
             yest_points = [(t, v) for t, v in points if t.astimezone(TZ_ET).date() == yest_date]
 
-            # Recompute perf stats using today's data only
             if today_points:
-                start_value = today_points[0][1]
                 current_value = today_points[-1][1]
+                start_value = yest_close if yest_close and yest_close > 0 else today_points[0][1]
                 if start_value and start_value > 0:
                     perf_abs = current_value - start_value
                     perf_pct = perf_abs / start_value * 100
@@ -304,6 +326,7 @@ from(bucket: "portfolio")
         )
 
         if is_intraday:
+            assert day_et
             for hour, label in [(9, "9am"), (12, "12pm"), (15, "3pm"), (18, "6pm")]:
                 marker_et = day_et.replace(hour=hour, minute=0, second=0, microsecond=0)
                 xf = (marker_et.timestamp() - t0) / t_span
@@ -440,14 +463,31 @@ from(bucket: "portfolio")
                 continue
         for acct_id, vals in by_acct_ts.items():
             vals.sort()
-            if len(vals) >= 2:
-                start_v, end_v = vals[0][1], vals[-1][1]
-                chg = end_v - start_v
-                pct = chg / start_v * 100 if start_v else 0.0
-            elif vals:
-                chg, pct = 0.0, 0.0
-            else:
+            if not vals:
                 continue
+            if (
+                is_intraday
+                and day_midnight_utc is not None
+                and today_date_et is not None
+                and day_open_ts is not None
+            ):
+                # 1D: anchor to last point before the active day's UTC midnight.
+                before_today = [v for t, v in vals if t < day_midnight_utc]
+                today_v = [
+                    v
+                    for t, v in vals
+                    if t.astimezone(TZ_ET).date() == today_date_et and t.timestamp() >= day_open_ts
+                ]
+                if not today_v:
+                    continue
+                end_v = today_v[-1]
+                start_v = before_today[-1] if before_today else today_v[0]
+            elif len(vals) >= 2:
+                start_v, end_v = vals[0][1], vals[-1][1]
+            else:
+                start_v, end_v = vals[0][1], vals[0][1]
+            chg = end_v - start_v
+            pct = chg / start_v * 100 if start_v else 0.0
             acct_day_changes[acct_id] = {"chg": chg, "pct": pct}
     except Exception as e:
         logger.warning("Could not fetch account changes: %s", e)
