@@ -633,12 +633,15 @@ from(bucket: "portfolio")
   |> aggregateWindow(every: 1d, fn: last, createEmpty: false, timeSrc: "_start")
   |> sort(columns: ["_time"])
 """
-    now_et = datetime.now(TZ_ET)
-    today_midnight_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_midnight_str = today_midnight_et.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Fetch from a few hours before UTC midnight so we always have yesterday's
+    # close to anchor against — same baseline /portfolio uses, so the two views
+    # report the same percentage.
+    now_utc = datetime.now(timezone.utc)
+    today_midnight_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    fetch_from = (today_midnight_utc - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
     query_today = f"""
 from(bucket: "portfolio")
-  |> range(start: {today_midnight_str})
+  |> range(start: {fetch_from})
   |> filter(fn: (r) => r._measurement == "portfolio_value" and r.owner == "all" and r._field == "value")
   |> sort(columns: ["_time"])
 """
@@ -668,7 +671,8 @@ from(bucket: "portfolio")
     # Monthly % change
     month_chg = (points_1m[-1][1] - points_1m[0][1]) / points_1m[0][1] * 100
 
-    # Daily % change: today's last vs today's midnight backfill point (matches 1D chart baseline)
+    # Daily % change: anchor to last point before today's UTC midnight (= yesterday's
+    # close), matching the /portfolio 1D baseline. Resilient to stale pre-market writes.
     today_points: list[tuple[datetime, float]] = []
     for row in rows_today:
         try:
@@ -680,9 +684,12 @@ from(bucket: "portfolio")
             continue
     today_points.sort()
     day_chg: float | None = None
-    if len(today_points) >= 2:
-        p, c = today_points[0][1], today_points[-1][1]
-        day_chg = (c - p) / p * 100 if p else None
+    pre_today = [v for t, v in today_points if t < today_midnight_utc]
+    post_today = [v for t, v in today_points if t >= today_midnight_utc]
+    baseline = pre_today[-1] if pre_today else (post_today[0] if post_today else None)
+    current = post_today[-1] if post_today else None
+    if baseline and current and baseline > 0:
+        day_chg = (current - baseline) / baseline * 100
 
     # SVG geometry
     t0 = points_1m[0][0].timestamp()
