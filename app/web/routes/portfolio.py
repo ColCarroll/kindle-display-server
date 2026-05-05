@@ -51,7 +51,7 @@ def _categorize(acct: dict) -> str:
 RANGE_OPTIONS = {
     "1d": {"label": "1D", "agg": "10m"},  # flux range overridden to midnight UTC in route
     "1w": {"flux": "-7d", "label": "1W", "agg": "1h"},
-    "1m": {"flux": "-30d", "label": "1M", "agg": "1d"},
+    "1m": {"flux": "-30d", "label": "1M", "agg": "1h"},
     "1y": {"flux": "-365d", "label": "1Y", "agg": "1d"},
 }
 DEFAULT_RANGE = "1m"
