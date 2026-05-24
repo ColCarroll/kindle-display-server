@@ -104,19 +104,42 @@ PM_FIELDS = [
     {"field": "pm10_0", "sublabel": "PM10", "dasharray": "2,5"},
 ]
 
-SENSORS = [
-    {"name": "AirQ α", "display": "Office", "color": "#4477aa"},
-    {"name": "AirQ β", "display": "Bedroom", "color": "#aa7733"},
-]
-
-# Per-sensor temperature correction (°C), calibrated against a reference thermometer.
-# Applied to the raw Celsius reading before the C→F transform.
-TEMP_OFFSETS_C: dict[str, float] = {
-    "AirQ α": -0.89,  # Office:  21.45°C raw → 20.56°C → 69°F  (2026-04-27)
-    "AirQ β": -3.45,  # Bedroom: 24.01°C raw → 20.56°C → 69°F  (2026-04-27)
+# Sensor sets per site. Home sensors are untagged in InfluxDB; cabin sensors carry
+# site=cabin. Each set is queried and rendered independently so the locations stay separate.
+# Per-sensor temp_offsets (°C) are calibrated against a reference thermometer and applied
+# to the raw Celsius reading before the C→F transform.
+SENSOR_SETS: dict[str, dict] = {
+    "home": {
+        "label": "Home",
+        "sensors": [
+            {"name": "AirQ α", "display": "Office", "color": "#4477aa"},
+            {"name": "AirQ β", "display": "Bedroom", "color": "#aa7733"},
+        ],
+        "temp_offsets": {
+            "AirQ α": -0.89,  # Office:  21.45°C raw → 20.56°C → 69°F  (2026-04-27)
+            "AirQ β": -3.45,  # Bedroom: 24.01°C raw → 20.56°C → 69°F  (2026-04-27)
+        },
+    },
+    "cabin": {
+        "label": "Wentworth",
+        "sensors": [
+            {"name": "AirQ γ", "display": "Main Room", "color": "#4477aa"},
+            {"name": "AirQ δ", "display": "Green Room", "color": "#228833"},
+            {"name": "AirQ ε", "display": "Basement", "color": "#aa7733"},
+            {"name": "AirQ ζ", "display": "Water Room", "color": "#66ccee"},
+        ],
+        # Cabin temps are already self-heating corrected in ESPHome; no extra app-side offset.
+        "temp_offsets": {},
+    },
 }
+DEFAULT_SITE = "home"
 
 ALL_FIELDS = [m["field"] for m in METRICS_CONFIG] + [p["field"] for p in PM_FIELDS]
+
+
+def _legend_sensors(site: str) -> list[dict]:
+    """Sensor display names + colors for the chart legend."""
+    return [{"display": s["display"], "color": s["color"]} for s in SENSOR_SETS[site]["sensors"]]
 
 
 def _query_influx(flux_query: str) -> list[dict]:
@@ -264,8 +287,11 @@ def _compute_x_markers(
     return markers
 
 
-def fetch_airq_data(range_key: str = DEFAULT_RANGE) -> dict:
-    """Fetch air quality data from InfluxDB for the given time range."""
+def fetch_airq_data(range_key: str = DEFAULT_RANGE, site: str = DEFAULT_SITE) -> dict:
+    """Fetch air quality data from InfluxDB for the given time range and site (home/cabin)."""
+    sensor_set = SENSOR_SETS[site]
+    sensors = sensor_set["sensors"]
+    temp_offsets = sensor_set["temp_offsets"]
     opt = RANGE_OPTIONS[range_key]
     t_end = datetime.now(timezone.utc)
     t_start = t_end - opt["delta"]
@@ -278,10 +304,12 @@ def fetch_airq_data(range_key: str = DEFAULT_RANGE) -> dict:
     flux_range = f"-{total_minutes}m"
 
     field_filter = " or ".join(f'r._field == "{f}"' for f in ALL_FIELDS)
+    location_filter = " or ".join(f'r.location == "{s["name"]}"' for s in sensors)
     query = f"""
 from(bucket: "airq")
   |> range(start: {flux_range})
   |> filter(fn: (r) => r._measurement == "airq" and r.source == "esphome")
+  |> filter(fn: (r) => {location_filter})
   |> filter(fn: (r) => {field_filter})
   |> filter(fn: (r) => r._value > 0)
   |> aggregateWindow(every: {opt["agg"]}, fn: mean, createEmpty: false)
@@ -405,7 +433,7 @@ from(bucket: "airq")
 
     for cfg in METRICS_CONFIG:
         series, all_values = [], []
-        for sensor in SENSORS:
+        for sensor in sensors:
             s, vals = _build_series(
                 cfg["field"],
                 sensor,
@@ -413,7 +441,9 @@ from(bucket: "airq")
                 "",
                 cfg["decimals"],
                 transform=cfg.get("transform"),
-                offset_c=TEMP_OFFSETS_C.get(sensor["name"], 0.0) if cfg["field"] == "temperature" else 0.0,
+                offset_c=temp_offsets.get(sensor["name"], 0.0)
+                if cfg["field"] == "temperature"
+                else 0.0,
             )
             series.append(s)
             all_values.extend(vals)
@@ -432,7 +462,7 @@ from(bucket: "airq")
 
     # Combined PM chart
     pm_series, pm_all_values = [], []
-    for sensor in SENSORS:
+    for sensor in sensors:
         for pm in PM_FIELDS:
             s, vals = _build_series(pm["field"], sensor, pm["sublabel"], pm["dasharray"], 1)
             pm_series.append(s)
@@ -450,6 +480,9 @@ from(bucket: "airq")
         "x_markers": x_markers,
         "edge_label": opt["edge_label"],
         "current_range": range_key,
+        "site": site,
+        "site_label": sensor_set["label"],
+        "legend_sensors": _legend_sensors(site),
     }
 
 
@@ -457,11 +490,12 @@ from(bucket: "airq")
 async def air_quality(
     request: Request,
     range: str = Query(default=DEFAULT_RANGE, pattern="^(1h|24h|7d|30d)$"),
+    site: str = Query(default=DEFAULT_SITE, pattern="^(home|cabin)$"),
     _user: str = Depends(require_auth),
 ):
     """Air quality dashboard page."""
     try:
-        data = await asyncio.to_thread(fetch_airq_data, range)
+        data = await asyncio.to_thread(fetch_airq_data, range, site)
     except Exception as e:
         logger.error(f"Failed to fetch air quality data: {e}")
         data = {
@@ -469,6 +503,9 @@ async def air_quality(
             "x_markers": [],
             "edge_label": "",
             "current_range": range,
+            "site": site,
+            "site_label": SENSOR_SETS[site]["label"],
+            "legend_sensors": _legend_sensors(site),
             "error": str(e),
         }
     return templates.TemplateResponse(
@@ -486,12 +523,16 @@ _STATUS_THRESHOLDS = {
 }
 
 
-def _airq_status() -> str:
-    """Return 'green', 'yellow', or 'red' based on most recent sensor readings."""
-    query = """
+def _airq_status(site: str = DEFAULT_SITE) -> str:
+    """Return 'green', 'yellow', or 'red' based on most recent sensor readings for a site."""
+    location_filter = " or ".join(
+        f'r.location == "{s["name"]}"' for s in SENSOR_SETS[site]["sensors"]
+    )
+    query = f"""
 from(bucket: "airq")
   |> range(start: -30m)
   |> filter(fn: (r) => r.source == "esphome")
+  |> filter(fn: (r) => {location_filter})
   |> filter(fn: (r) => r._field == "co2" or r._field == "voc" or r._field == "nox" or r._field == "pm2_5")
   |> last()
 """
@@ -528,6 +569,12 @@ from(bucket: "airq")
 
 
 @router.get("/partials/airq-status", response_class=HTMLResponse)
-async def airq_status_partial(request: Request, _user: str = Depends(require_auth)):
-    status = await asyncio.to_thread(_airq_status)
-    return templates.TemplateResponse(request, "partials/airq_status.html", {"status": status})
+async def airq_status_partial(
+    request: Request,
+    site: str = Query(default=DEFAULT_SITE, pattern="^(home|cabin)$"),
+    _user: str = Depends(require_auth),
+):
+    status = await asyncio.to_thread(_airq_status, site)
+    return templates.TemplateResponse(
+        request, "partials/airq_status.html", {"status": status, "site": site}
+    )

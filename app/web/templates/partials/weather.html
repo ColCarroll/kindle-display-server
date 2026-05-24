@@ -8,7 +8,11 @@
             <h3>
                 {{ location.city }}
                 {% if location.city == "Home" %}
-                <span hx-get="/partials/airq-status"
+                <span hx-get="/partials/airq-status?site=home"
+                      hx-trigger="load"
+                      hx-swap="innerHTML"></span>
+                {% elif location.city == "Wentworth" %}
+                <span hx-get="/partials/airq-status?site=cabin"
                       hx-trigger="load"
                       hx-swap="innerHTML"></span>
                 {% endif %}
