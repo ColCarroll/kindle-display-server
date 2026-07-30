@@ -734,6 +734,45 @@ details[open] .pf-section-toggle::before {
 .airq-status-yellow { background: #c8a000; }
 .airq-status-red    { background: #c03030; }
 
+/* ── Stale sensor alert (dashboard) ── */
+
+.airq-alert {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    width: 100%;
+    max-width: 680px;
+    box-sizing: border-box;
+    /* Margin lives on the banner, not a wrapper section, so an empty alert
+       container leaves no gap at the top of the page. */
+    margin: 0 0 2rem;
+    padding: 0.7rem 0.9rem;
+    background: #f7e9e9;
+    border-left: 3px solid #c03030;
+    color: #8a1a1a;
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+
+.airq-alert-icon {
+    flex-shrink: 0;
+    line-height: 1.45;
+}
+
+.airq-alert-list {
+    margin: 0.4rem 0 0;
+    padding-left: 1.1rem;
+}
+
+.airq-alert-list a {
+    color: inherit;
+}
+
+.airq-alert-age {
+    color: #a35a5a;
+    font-size: 0.9em;
+}
+
 /* ── Portfolio mini widget (dashboard) ── */
 
 .pf-mini-section {

@@ -5,6 +5,12 @@
 {% block header %}{% endblock %}
 
 {% block content %}
+<!-- Renders nothing unless a sensor has gone quiet, so it stays out of the way. -->
+<div id="airq-alert-container"
+     hx-get="/partials/airq-alert"
+     hx-trigger="load, every 5m"
+     hx-swap="innerHTML"></div>
+
 <section class="dashboard-section">
     <div id="weather-container"
          hx-get="/partials/weather"

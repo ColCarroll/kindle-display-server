@@ -1,0 +1,21 @@
+{% if groups %}
+<div class="airq-alert" role="status">
+    <span class="airq-alert-icon" aria-hidden="true">⚠</span>
+    <div>
+        <strong>{{ count }} sensor{{ 's' if count != 1 }} {{ 'has' if count == 1 else 'have' }} not reported in over an hour.</strong>
+        Could be an unplugged sensor or a power outage.
+        <ul class="airq-alert-list">
+            {% for group in groups %}
+            <li>
+                <a href="/air-quality?site={{ group.site }}">{{ group.site_label }}</a>:
+                {% for sensor in group.sensors -%}
+                {{ sensor.display }}
+                <span class="airq-alert-age">({{ sensor.age if sensor.age else 'no data' }})</span>
+                {%- if not loop.last %}, {% endif %}
+                {%- endfor %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}

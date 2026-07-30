@@ -578,3 +578,113 @@ async def airq_status_partial(
     return templates.TemplateResponse(
         request, "partials/airq_status.html", {"status": status, "site": site}
     )
+
+
+# A healthy sensor writes every 60s, so an hour of silence means it is unplugged,
+# crashed, or its whole site lost power — all worth surfacing on the front page.
+STALE_AFTER = timedelta(hours=1)
+# How far back to look for each sensor's last reading. Sensors quieter than this
+# are reported without an age rather than with a misleadingly precise one.
+STALE_LOOKBACK = timedelta(days=7)
+
+
+def _all_sensors() -> list[dict]:
+    """Every configured sensor across all sites, annotated with its site."""
+    return [
+        {**sensor, "site": site, "site_label": cfg["label"]}
+        for site, cfg in SENSOR_SETS.items()
+        for sensor in cfg["sensors"]
+    ]
+
+
+def _fmt_age(delta: timedelta) -> str:
+    """Coarse human duration: '45m', '3h', '3h 20m', '2d', '2d 5h'."""
+    minutes = int(delta.total_seconds() // 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, mins = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {mins}m" if mins else f"{hours}h"
+    days, hrs = divmod(hours, 24)
+    return f"{days}d {hrs}h" if hrs else f"{days}d"
+
+
+def _stale_sensors() -> list[dict]:
+    """Sensors with no reading in STALE_AFTER, across every site.
+
+    Deliberately queried with no field filter, so a write of *any* field counts as
+    alive: this is a device-liveness check, not a per-field one. Returns [] when
+    InfluxDB is unreachable, matching _airq_status — a dashboard-side outage
+    should not be reported to the user as a sensor outage.
+    """
+    sensors = _all_sensors()
+    location_filter = " or ".join(f'r.location == "{s["name"]}"' for s in sensors)
+    lookback_m = int(STALE_LOOKBACK.total_seconds() / 60)
+    query = f"""
+from(bucket: "airq")
+  |> range(start: -{lookback_m}m)
+  |> filter(fn: (r) => r._measurement == "airq" and r.source == "esphome")
+  |> filter(fn: (r) => {location_filter})
+  |> group(columns: ["location"])
+  |> last()
+  |> keep(columns: ["location", "_time"])
+"""
+    try:
+        rows = _query_influx(query)
+    except Exception as e:
+        logger.error(f"Failed to check sensor freshness: {e}")
+        return []
+
+    last_seen: dict[str, float] = {}
+    for row in rows:
+        location = row.get("location", "")
+        time_str = row.get("_time", "")
+        if not location or not time_str:
+            continue
+        try:
+            ts = _parse_ts(time_str)
+        except (ValueError, IndexError):
+            continue
+        last_seen[location] = max(ts, last_seen.get(location, 0.0))
+
+    now = datetime.now(timezone.utc).timestamp()
+    stale = []
+    for sensor in sensors:
+        ts = last_seen.get(sensor["name"])
+        age = None
+        if ts is not None:
+            age = timedelta(seconds=now - ts)
+            if age < STALE_AFTER:
+                continue
+        stale.append(
+            {
+                "display": sensor["display"],
+                "site": sensor["site"],
+                "site_label": sensor["site_label"],
+                "age": _fmt_age(age) if age is not None else None,
+            }
+        )
+    return stale
+
+
+def _group_stale(stale: list[dict]) -> list[dict]:
+    """Group stale sensors by site so one power cut reads as one line, not four."""
+    groups: dict[str, dict] = {}
+    for sensor in stale:
+        group = groups.setdefault(
+            sensor["site"],
+            {"site": sensor["site"], "site_label": sensor["site_label"], "sensors": []},
+        )
+        group["sensors"].append(sensor)
+    return list(groups.values())
+
+
+@router.get("/partials/airq-alert", response_class=HTMLResponse)
+async def airq_alert_partial(request: Request, _user: str = Depends(require_auth)):
+    """Front-page warning for sensors that have stopped reporting."""
+    stale = await asyncio.to_thread(_stale_sensors)
+    return templates.TemplateResponse(
+        request,
+        "partials/airq_alert.html",
+        {"groups": _group_stale(stale), "count": len(stale)},
+    )
