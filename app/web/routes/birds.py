@@ -9,7 +9,9 @@ import asyncio
 import logging
 import math
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -27,10 +29,14 @@ router = APIRouter()
 BUCKET = "birds"
 SITE = "cabin"
 SITE_LABEL = "Wentworth"
+# BirdNET-Go's (deliberately coarse) location for the cabin, used for sunrise/sunset
+SUN_LAT, SUN_LON = 43.870, -71.913
 
 TREND_DAYS = 30  # sparklines: detections and species per day
 WEEK_DAYS = 7  # heatmap "7 days" view
 HEATMAP_ROWS = 15  # most-detected species shown in the heatmap
+HEATMAP_EVERY = "10m"  # fine windows, re-binned by hour after the sun-relative shift
+HEATMAP_WINDOW_MID = timedelta(minutes=5)
 ARRIVAL_WINDOW_DAYS = 14  # list species that arrived within this many days...
 ARRIVAL_ABSENCE_DAYS = 60  # ...after not being heard for at least this long
 BASELINE_DAYS = 2  # species first heard right after records began aren't "arrivals"
@@ -60,7 +66,7 @@ from(bucket: "{BUCKET}")
 
 
 def _counts_query(start: datetime, every: str) -> str:
-    """Per-species detection counts in local-time windows (`1h` or `1d`)."""
+    """Per-species detection counts in local-time windows (e.g. `10m`, `1d`)."""
     return (
         _detections_flux(start)
         + f"""  |> group(columns: ["common_name"])
@@ -97,6 +103,73 @@ def _parse_counts(rows: list[dict]) -> list[tuple[datetime, str, int]]:
     return out
 
 
+# ── Sun-relative time ──
+#
+# Birds keep time by the sun, not the clock: sunrise drifts a minute or two a day
+# and jumps an hour at DST changes. Before detections from different days are
+# summed into one hour-of-day heatmap, each is moved to the same point relative
+# to sunrise/sunset on *today's* schedule (e.g. 40% of the way through daylight),
+# so dawn lines up with dawn. The axis still reads as today's clock time.
+
+
+@lru_cache(maxsize=64)
+def sun_times(day: date, lat: float = SUN_LAT, lon: float = SUN_LON) -> tuple[datetime, datetime]:
+    """(sunrise, sunset) in UTC for a calendar day, via the NOAA sunrise equation.
+
+    Accurate to about a minute at mid latitudes; includes the standard -0.833°
+    correction for refraction and the sun's radius. Longitude is east-positive.
+    """
+    rad = math.radians
+    n = (day - date(2000, 1, 1)).days
+    j_star = n - lon / 360
+    m = (357.5291 + 0.98560028 * j_star) % 360
+    c = 1.9148 * math.sin(rad(m)) + 0.0200 * math.sin(rad(2 * m)) + 0.0003 * math.sin(rad(3 * m))
+    ecl = (m + c + 180 + 102.9372) % 360
+    j_transit = 2451545.0 + j_star + 0.0053 * math.sin(rad(m)) - 0.0069 * math.sin(rad(2 * ecl))
+    sin_dec = math.sin(rad(ecl)) * math.sin(rad(23.4397))
+    cos_dec = math.cos(math.asin(sin_dec))
+    cos_w = (math.sin(rad(-0.833)) - math.sin(rad(lat)) * sin_dec) / (math.cos(rad(lat)) * cos_dec)
+    half_day = math.degrees(math.acos(max(-1.0, min(1.0, cos_w)))) / 360
+
+    def _utc(jd: float) -> datetime:
+        return datetime.fromtimestamp((jd - 2440587.5) * 86400, timezone.utc)
+
+    return _utc(j_transit - half_day), _utc(j_transit + half_day)
+
+
+def to_today_sun(when: datetime, today: date) -> datetime:
+    """The moment on `today`'s sun schedule matching `when`'s position between
+    sunrise and sunset (daytime) or sunset and sunrise (night)."""
+    day = when.astimezone(TZ_BOSTON).date()
+    rise, sunset = sun_times(day)
+    if when < rise:  # the night before `day`'s sunrise
+        start, end = sun_times(day - timedelta(days=1))[1], rise
+        anchor = (sun_times(today - timedelta(days=1))[1], sun_times(today)[0])
+    elif when < sunset:
+        start, end = rise, sunset
+        anchor = sun_times(today)
+    else:  # the night after `day`'s sunset
+        start, end = sunset, sun_times(day + timedelta(days=1))[0]
+        anchor = (sun_times(today)[1], sun_times(today + timedelta(days=1))[0])
+    frac = (when - start) / (end - start)
+    return (anchor[0] + frac * (anchor[1] - anchor[0])).astimezone(TZ_BOSTON)
+
+
+def daylight(today: date) -> dict:
+    """Today's sunrise/sunset for the heatmap axis, and which hour cells are night."""
+    rise, sunset = (t.astimezone(TZ_BOSTON) for t in sun_times(today))
+
+    def _hours(t: datetime) -> float:
+        return t.hour + t.minute / 60
+
+    return {
+        "sunrise": {"label": f"{rise:%-I:%M}", "pct": round(_hours(rise) / 24 * 100, 2)},
+        "sunset": {"label": f"{sunset:%-I:%M}", "pct": round(_hours(sunset) / 24 * 100, 2)},
+        # an hour cell is "night" if its midpoint falls outside daylight
+        "night": [not _hours(rise) <= h + 0.5 < _hours(sunset) for h in range(24)],
+    }
+
+
 def _cell_alpha(count: int, max_count: int) -> float:
     """Heatmap shading: sqrt scale so quiet hours stay visible next to the dawn chorus."""
     if count <= 0 or max_count <= 0:
@@ -105,14 +178,23 @@ def _cell_alpha(count: int, max_count: int) -> float:
 
 
 def build_heatmap(
-    hourly: list[tuple[datetime, str, int]], today: date, view: str, now_hour: int
+    windows: list[tuple[datetime, str, int]],
+    today: date,
+    view: str,
+    now_hour: int,
+    place: Callable[[datetime], datetime] | None = None,
 ) -> dict:
-    """Species × hour-of-day grid for today, or summed over the last WEEK_DAYS days."""
+    """Species × hour-of-day grid for today, or summed over the last WEEK_DAYS days.
+
+    `place` maps a window's time to where it belongs on today's axis (e.g.
+    `to_today_sun`); by default the window's own clock hour is used.
+    """
     first_day = today if view == "today" else today - timedelta(days=WEEK_DAYS - 1)
     grid: dict[str, list[int]] = defaultdict(lambda: [0] * 24)
-    for when, name, count in hourly:
+    for when, name, count in windows:
         if first_day <= when.date() <= today:
-            grid[name][when.hour] += count
+            hour = (place(when) if place else when).hour
+            grid[name][hour] += count
 
     ranked = sorted(grid.items(), key=lambda kv: (-sum(kv[1]), kv[0]))
     shown = ranked[:HEATMAP_ROWS]
@@ -202,9 +284,8 @@ def fetch_birds_data(view: str = DEFAULT_VIEW) -> dict:
     today = now.date()
     history_days = max(TREND_DAYS, ARRIVAL_WINDOW_DAYS + ARRIVAL_ABSENCE_DAYS)
 
-    hourly = _parse_counts(
-        _query_influx(_counts_query(_local_midnight(today - timedelta(days=WEEK_DAYS - 1)), "1h"))
-    )
+    week_start = _local_midnight(today - timedelta(days=WEEK_DAYS - 1))
+    windows = _parse_counts(_query_influx(_counts_query(week_start, HEATMAP_EVERY)))
     daily = _parse_counts(
         _query_influx(_counts_query(_local_midnight(today - timedelta(days=history_days)), "1d"))
     )
@@ -222,7 +303,14 @@ def fetch_birds_data(view: str = DEFAULT_VIEW) -> dict:
         "site_label": SITE_LABEL,
         "today_label": now.strftime("%a %b %-d"),
         "trend": trend,
-        "heatmap": build_heatmap(hourly, today, view, now.hour),
+        "heatmap": build_heatmap(
+            windows,
+            today,
+            view,
+            now.hour,
+            place=lambda when: to_today_sun(when + HEATMAP_WINDOW_MID, today),
+        ),
+        "daylight": daylight(today),
         "arrivals": find_arrivals(daily, today, earliest),
         "arrival_absence_days": ARRIVAL_ABSENCE_DAYS,
         "arrival_window_days": ARRIVAL_WINDOW_DAYS,

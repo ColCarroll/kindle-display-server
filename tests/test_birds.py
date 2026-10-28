@@ -216,7 +216,7 @@ def fake_influx(monkeypatch):
         def _fake(query):
             if exc is not None:
                 raise exc
-            if "every: 1h" in query:
+            if "every: 10m" in query:
                 return [
                     {
                         "_time": _influx_ts(_at(today, 0)),
@@ -365,3 +365,87 @@ def test_card_requires_auth(fake_influx):
     fake_influx()
     app.dependency_overrides.clear()
     assert TestClient(app).get("/partials/birds").status_code == 401
+
+
+# ── Sun-relative time ──
+
+BOSTON = (42.3601, -71.0589)
+
+
+def _local(t: datetime) -> str:
+    return t.astimezone(birds.TZ_BOSTON).strftime("%H:%M")
+
+
+@pytest.mark.parametrize(
+    ("day", "rise", "sunset"),
+    [
+        (date(2026, 6, 21), "05:07", "20:24"),  # summer solstice, EDT
+        (date(2026, 12, 21), "07:10", "16:14"),  # winter solstice, EST
+    ],
+)
+def test_sun_times_match_boston_references(day, rise, sunset):
+    r, s = birds.sun_times(day, *BOSTON)
+
+    def minutes(hhmm):
+        h, m = map(int, hhmm.split(":"))
+        return h * 60 + m
+
+    assert abs(minutes(_local(r)) - minutes(rise)) <= 2
+    assert abs(minutes(_local(s)) - minutes(sunset)) <= 2
+
+
+def test_today_detections_stay_put():
+    t = datetime(2026, 10, 27, 7, 40, tzinfo=birds.TZ_BOSTON)
+
+    moved = birds.to_today_sun(t, t.date())
+
+    assert abs((moved - t).total_seconds()) < 1
+
+
+def test_dawn_lines_up_across_the_dst_change():
+    """30 minutes after sunrise on a pre-DST day lands ~30 minutes after sunrise
+    on a post-DST day, an hour earlier on the clock."""
+    before, after = date(2026, 10, 30), date(2026, 11, 2)
+    t = birds.sun_times(before)[0] + timedelta(minutes=30)
+
+    moved = birds.to_today_sun(t, after)
+
+    assert _local(t)[:2] == "07"  # ~7:50 EDT
+    assert _local(moved)[:2] == "06"  # ~6:54 EST
+    gap = moved - birds.sun_times(after)[0]
+    assert timedelta(minutes=28) < gap < timedelta(minutes=32)
+
+
+def test_night_detections_map_relative_to_sunset_and_sunrise():
+    day, today = date(2026, 10, 20), date(2026, 10, 27)
+    evening = birds.sun_times(day)[1] + timedelta(hours=1)  # 1h after sunset
+    predawn = birds.sun_times(day)[0] - timedelta(minutes=10)  # 10 min before sunrise
+
+    evening_moved = birds.to_today_sun(evening, today)
+    predawn_moved = birds.to_today_sun(predawn, today)
+
+    after_sunset = evening_moved - birds.sun_times(today)[1]
+    before_sunrise = birds.sun_times(today)[0] - predawn_moved
+    # nights lengthen a little over the week, so the offsets stretch slightly
+    assert timedelta(minutes=58) < after_sunset < timedelta(minutes=63)
+    assert timedelta(minutes=9) < before_sunrise < timedelta(minutes=11)
+
+
+def test_heatmap_uses_place_to_bin_hours():
+    windows = [(_at(_days_ago(3), 8), "Blue Jay", 4)]
+
+    hm = birds.build_heatmap(
+        windows, TODAY, "week", now_hour=9, place=lambda w: w - timedelta(hours=1)
+    )
+
+    assert hm["rows"][0]["cells"][7]["alpha"] == 1.0
+
+
+def test_daylight_marks_night_hours():
+    dl = birds.daylight(TODAY)
+
+    assert dl["sunrise"]["label"].startswith("7:")
+    assert dl["sunset"]["label"].startswith("5:")
+    assert dl["night"][2] and dl["night"][22]
+    assert not dl["night"][12]
+    assert 0 < dl["sunrise"]["pct"] < dl["sunset"]["pct"] < 100

@@ -46,6 +46,17 @@
 <h2 class="birds-section">{{ "Today" if view == "today" else "Last 7 days" }} by hour</h2>
 {% if heatmap.rows %}
 <div class="birds-heatmap">
+    {% if daylight %}
+    <div class="bh-row bh-axis-row">
+        <div class="bh-name"></div>
+        <div class="bh-sun-line">
+            <span class="bh-sun" style="left: {{ daylight.sunrise.pct }}%"
+                  title="Sunrise {{ daylight.sunrise.label }}">↑{{ daylight.sunrise.label }}</span>
+            <span class="bh-sun" style="left: {{ daylight.sunset.pct }}%"
+                  title="Sunset {{ daylight.sunset.label }}">↓{{ daylight.sunset.label }}</span>
+        </div>
+    </div>
+    {% endif %}
     <div class="bh-row bh-axis-row" aria-hidden="true">
         <div class="bh-name"></div>
         <div class="bh-cells">
@@ -57,7 +68,7 @@
         <div class="bh-name">{{ row.name }} <span class="bh-total">{{ row.total }}</span></div>
         <div class="bh-cells">
             {%- for c in row.cells -%}
-            <span class="bh-cell{% if not c.alpha %} bh-zero{% endif %}{% if c.now %} bh-now{% endif %}"
+            <span class="bh-cell{% if not c.alpha %} bh-zero{% endif %}{% if daylight and daylight.night[loop.index0] %} bh-night{% endif %}{% if c.now %} bh-now{% endif %}"
                   {% if c.alpha %}style="--a: {{ c.alpha }}"{% endif %} title="{{ c.label }}"></span>
             {%- endfor -%}
         </div>
@@ -86,7 +97,10 @@
     Birds only; detections reviewed as false positives are excluded. Arrivals are species
     not heard in the previous {{ arrival_absence_days }} days, with at least
     {{ arrival_min_detections }} detections since (count shown). Detection counts reflect
-    relative activity rather than individual birds.
+    relative activity rather than individual birds. Hours follow the sun: each day's
+    detections are placed at the same point relative to sunrise or sunset on today's
+    schedule, so dawn lines up with dawn across days and clock changes. Shaded cells are
+    night.
 </p>
 {% endif %}
 
@@ -196,6 +210,19 @@
     background: rgba(46, 125, 50, var(--a, 0));
 }
 .bh-cell.bh-zero { background: rgba(128, 128, 128, 0.09); }
+.bh-cell.bh-zero.bh-night { background: rgba(70, 80, 110, 0.16); }
+.bh-sun-line {
+    position: relative;
+    height: 0.9rem;
+}
+.bh-sun {
+    position: absolute;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    color: #b07a10;
+    line-height: 1;
+    white-space: nowrap;
+}
 .bh-cell.bh-now { box-shadow: inset 0 0 0 1px #c62828; }
 .bh-axis-row { margin-bottom: 0.15rem; }
 .bh-tick {
@@ -252,6 +279,8 @@
     .birds-spark { color: #66bb6a; }
     .bh-cell { background: rgba(102, 187, 106, var(--a, 0)); }
     .bh-cell.bh-zero { background: rgba(128, 128, 128, 0.15); }
+    .bh-cell.bh-zero.bh-night { background: rgba(150, 160, 200, 0.10); }
+    .bh-sun { color: #e0b050; }
 }
 </style>
 {% endblock %}
