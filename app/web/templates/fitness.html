@@ -104,7 +104,7 @@
             points="{% for xf, v in segment %}{{ cl + xf * cw }},{{ ct + ch - (v - metric.min_val) / metric.val_range * ch }} {% endfor %}"
             fill="none"
             stroke="{{ s.color }}"
-            stroke-width="1.5"
+            stroke-width="{{ s.width }}"
             stroke-linejoin="round"
             stroke-linecap="round"
             clip-path="url(#clip-{{ metric_idx }})"/>

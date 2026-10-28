@@ -125,8 +125,9 @@ def test_unit_conversions_and_formatting(fake_influx):
 
     assert _chart(data, "Skin temp change")["series"][0]["latest_val"] == "-0.9"
     assert _chart(data, "Altitude")["series"][0]["latest_val"] == "328"
-    assert _chart(data, "Marathon prediction")["series"][0]["latest_val"] == "2:46:56"
-    assert _chart(data, "5K prediction")["series"][0]["latest_val"] == "16:29"
+    pace = {x["display"]: x["latest_val"] for x in _chart(data, "Race pace")["series"]}
+    assert pace["Marathon"] == "6:22"  # 2:46:56 / 26.2 mi
+    assert pace["5K"] == "5:18"  # 16:29 / 3.1 mi
 
 
 def test_charts_without_data_are_omitted(fake_influx):
@@ -171,3 +172,112 @@ def test_page_shows_error_when_influx_down(client, fake_influx):
 
 def test_rejects_unknown_range(client):
     assert client.get("/fitness?range=5y").status_code == 422
+
+
+def test_trailing_mean_needs_most_of_the_week():
+    start = date(2026, 10, 1)
+    values = {start + timedelta(days=i): float(i) for i in range(7)}
+
+    avg = fitness._trailing_mean(values, 7)
+
+    assert start + timedelta(days=2) not in avg  # only 3 of 7 nights so far
+    assert avg[start + timedelta(days=3)] == 1.5  # nights 0-3
+    assert avg[start + timedelta(days=6)] == 3.0  # nights 0-6
+
+
+def test_sleep_chart_shows_last_night_and_7_day_average(fake_influx):
+    hours = [7, 7, 7, 8, 8, 8, 6]  # last night 6h, week averages 7h 17m
+    fake_influx(_rows("sleep_s", [h * 3600 for h in hours]))
+
+    sleep = _chart(fitness.fetch_fitness_data("30d"), "Sleep")
+    last_night, week = sleep["series"]
+
+    assert last_night["latest_val"] == "6h 00m"
+    assert week["latest_val"] == "7h 17m"
+    assert week["width"] > last_night["width"]
+
+
+def test_sleep_stages_are_7_day_averages_in_hours(fake_influx):
+    fake_influx(_rows("deep_s", [1800] * 7) + _rows("rem_s", [5400] * 6 + [7200]))
+
+    stages = {
+        s["display"]: s for s in _chart(fitness.fetch_fitness_data("30d"), "Sleep stages")["series"]
+    }
+
+    assert stages["Deep"]["latest_val"] == "30m"
+    assert stages["REM"]["latest_val"] == "1h 34m"
+    assert stages["Light"]["latest_val"] is None
+
+
+def _vitals_rows(nights: int, last: dict[str, float] | None = None) -> list[dict]:
+    """`nights` steady nights per vital (with a little wobble for a real SD), last overridable."""
+    base = {"hrv": 55, "rhr": 45, "respiration": 12, "skin_temp_c": 0.0, "spo2": 96}
+    rows = []
+    for field, v in base.items():
+        values = [v + (0.5 if i % 2 else -0.5) for i in range(nights)]
+        if last and field in last:
+            values[-1] = last[field]
+        rows += _rows(field, values)
+    rows += _rows("hrv_balanced_low", [47] * nights) + _rows("hrv_balanced_high", [63] * nights)
+    return rows
+
+
+def test_radar_draws_last_night_bold_over_six_fading_nights(fake_influx):
+    fake_influx(_vitals_rows(40))
+
+    radar = fitness.fetch_vitals_radar()
+
+    polys = radar["polys"]
+    assert len(polys) == 7
+    assert polys[-1]["day"] == _today()  # drawn last, on top
+    assert polys[-1]["width"] == 2.5 and polys[-1]["opacity"] == 1.0
+    widths = [p["width"] for p in polys]
+    assert widths == sorted(widths)  # older = thinner
+    assert [a["label"] for a in radar["axes"]] == [
+        "HRV",
+        "Resting heart rate",
+        "Respiration",
+        "Skin temp change",
+        "Pulse ox",
+    ]
+
+
+def test_radar_names_vitals_outside_typical(fake_influx):
+    fake_influx(_vitals_rows(40, last={"rhr": 52, "hrv": 40}))
+
+    radar = fitness.fetch_vitals_radar()
+
+    assert radar["outside"] == ["HRV", "Resting heart rate"]
+
+
+def test_radar_point_on_band_edge_lands_on_typical_ring():
+    lo_edge = fitness._radar_r(-1)
+    hi_edge = fitness._radar_r(1)
+    assert 0 < lo_edge < fitness._radar_r(0) < hi_edge < fitness.RADAR_R
+    assert fitness._radar_r(99) == fitness.RADAR_R  # clamped
+
+
+def test_radar_skips_nights_missing_a_vital(fake_influx):
+    rows = [
+        r for r in _vitals_rows(40) if not (r["_field"] == "spo2" and r["_time"] == _ts(_today()))
+    ]
+    fake_influx(rows)
+
+    radar = fitness.fetch_vitals_radar()
+
+    assert _today() not in [p["day"] for p in radar["polys"]]
+    spo2 = radar["axes"][4]
+    assert spo2["value"] == "–"
+
+
+def test_vitals_partial_links_to_fitness(client, fake_influx):
+    fake_influx(_vitals_rows(40))
+    resp = client.get("/partials/fitness-vitals")
+    assert resp.status_code == 200
+    assert 'href="/fitness"' in resp.text
+    assert "all typical" in resp.text
+
+
+def test_vitals_partial_without_data(client, fake_influx):
+    fake_influx([])
+    assert "No Garmin vitals yet" in client.get("/partials/fitness-vitals").text

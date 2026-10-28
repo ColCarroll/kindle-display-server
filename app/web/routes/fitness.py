@@ -6,6 +6,7 @@ timestamped at local midnight). Overnight values belong to the morning you woke 
 
 import asyncio
 import logging
+import math
 import statistics
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -53,8 +54,25 @@ C_MAIN = "#4477aa"
 C_ALT = "#aa7733"
 
 
-def _series(field, display, color=C_MAIN, transform=None):
-    return {"field": field, "display": display, "color": color, "transform": transform}
+C_FAINT = "#b4c7da"
+
+# Sleep stages, darkest = deepest
+C_DEEP = "#1f3f66"
+C_REM = "#4477aa"
+C_LIGHT = "#88aacc"
+C_AWAKE = "#cc8855"
+
+
+def _series(field, display, color=C_MAIN, transform=None, rolling=None, width=1.5):
+    """rolling=N plots the trailing N-day mean instead of the raw daily value."""
+    return {
+        "field": field,
+        "display": display,
+        "color": color,
+        "transform": transform,
+        "rolling": rolling,
+        "width": width,
+    }
 
 
 def _m_to_ft(v):
@@ -63,6 +81,20 @@ def _m_to_ft(v):
 
 def _c_delta_to_f(v):
     return v * 9 / 5
+
+
+def _s_to_h(v):
+    return v / 3600
+
+
+SLEEP_AVG_DAYS = 7
+
+RACE_MILES = {"5k": 3.10686, "10k": 6.21371, "half": 13.10938, "marathon": 26.21876}
+
+
+def _pace(miles):
+    """Predicted finish time (s) → seconds per mile."""
+    return lambda v: v / miles
 
 
 # Each section is a list of charts; each chart has one or more series.
@@ -136,6 +168,33 @@ SECTIONS = [
                 ],
             },
             {
+                "label": "Sleep",
+                "unit": "hours",
+                "hours": True,
+                "series": [
+                    _series("sleep_s", "Last night", color=C_FAINT, transform=_s_to_h),
+                    _series(
+                        "sleep_s",
+                        "7-day avg",
+                        transform=_s_to_h,
+                        rolling=SLEEP_AVG_DAYS,
+                        width=2.5,
+                    ),
+                ],
+            },
+            {
+                "label": "Sleep stages",
+                "unit": "hours · 7-day avg",
+                "hours": True,
+                "min_override": 0,
+                "series": [
+                    _series("light_s", "Light", C_LIGHT, _s_to_h, rolling=SLEEP_AVG_DAYS),
+                    _series("rem_s", "REM", C_REM, _s_to_h, rolling=SLEEP_AVG_DAYS),
+                    _series("deep_s", "Deep", C_DEEP, _s_to_h, rolling=SLEEP_AVG_DAYS),
+                    _series("awake_s", "Awake", C_AWAKE, _s_to_h, rolling=SLEEP_AVG_DAYS),
+                ],
+            },
+            {
                 "label": "Training readiness",
                 "unit": "morning",
                 "decimals": 0,
@@ -194,22 +253,15 @@ SECTIONS = [
                 "series": [_series("endurance_score", "Endurance score")],
             },
             {
-                "label": "5K prediction",
-                "unit": "",
+                "label": "Race pace",
+                "unit": "min/mi · predicted",
                 "duration": True,
-                "series": [_series("race_5k_s", "5K")],
-            },
-            {
-                "label": "Half marathon prediction",
-                "unit": "",
-                "duration": True,
-                "series": [_series("race_half_s", "Half")],
-            },
-            {
-                "label": "Marathon prediction",
-                "unit": "",
-                "duration": True,
-                "series": [_series("race_marathon_s", "Marathon")],
+                "series": [
+                    _series("race_5k_s", "5K", C_DEEP, _pace(RACE_MILES["5k"])),
+                    _series("race_10k_s", "10K", C_REM, _pace(RACE_MILES["10k"])),
+                    _series("race_half_s", "Half", C_ALT, _pace(RACE_MILES["half"])),
+                    _series("race_marathon_s", "Marathon", C_AWAKE, _pace(RACE_MILES["marathon"])),
+                ],
             },
         ],
     },
@@ -230,9 +282,16 @@ def _fmt_duration(seconds: float) -> str:
     return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
 
 
+def _fmt_hours(hours: float) -> str:
+    h, m = divmod(int(round(hours * 60)), 60)
+    return f"{h}h {m:02d}m" if h else f"{m}m"
+
+
 def _fmt_value(value: float, chart: dict) -> str:
     if chart.get("duration"):
         return _fmt_duration(value)
+    if chart.get("hours"):
+        return _fmt_hours(value)
     decimals = chart.get("decimals", 0)
     if chart.get("thousands"):
         return f"{value:,.{decimals}f}"
@@ -277,6 +336,16 @@ def _rolling_band(values: dict[date, float]) -> dict[date, tuple[float, float]]:
         mu, sd = statistics.fmean(window), statistics.stdev(window)
         band[d] = (mu - sd, mu + sd)
     return band
+
+
+def _trailing_mean(values: dict[date, float], days: int) -> dict[date, float]:
+    """Mean of the `days` calendar days ending on each day, needing over half of them."""
+    out = {}
+    for d in values:
+        window = [values[p] for i in range(days) if (p := d - timedelta(days=i)) in values]
+        if len(window) * 2 > days:
+            out[d] = statistics.fmean(window)
+    return out
 
 
 def _bucket(points: dict[date, float], start: date, bucket_days: int) -> list[tuple[date, float]]:
@@ -357,6 +426,8 @@ def _build_chart(chart: dict, raw: dict, start: date, end: date, opt: dict, x_of
     for s in chart["series"]:
         transform = s["transform"] or (lambda v: v)
         values = {d: transform(v) for d, v in raw.get(s["field"], {}).items()}
+        if s.get("rolling"):
+            values = _trailing_mean(values, s["rolling"])
 
         # Baseline band (only ever on single-series Health Status charts)
         band: dict[date, tuple[float, float]] = {}
@@ -384,6 +455,7 @@ def _build_chart(chart: dict, raw: dict, start: date, end: date, opt: dict, x_of
             {
                 "display": s["display"],
                 "color": s["color"],
+                "width": s["width"],
                 "latest_val": _fmt_value(latest[1], chart) if latest else None,
                 "latest_day": latest[0] if latest else None,
                 "latest_bg": status["bg"],
@@ -500,3 +572,137 @@ async def fitness(
             "error": str(e),
         }
     return templates.TemplateResponse("fitness.html", {"request": request, **data})
+
+
+# ---------------------------------------------------------------------------
+# Front-page vitals radar
+# ---------------------------------------------------------------------------
+
+# The Health Status charts, in radar order (clockwise from the top).
+VITALS = SECTIONS[0]["charts"]
+RADAR_NIGHTS = 7
+# Each axis plots how far a night sits from your typical range, in half-band-widths:
+# 0 = middle of typical, ±1 = edge of the shaded ring. Clamped so one wild night
+# doesn't flatten everything else.
+RADAR_Z_MAX = 2.5
+RADAR_R = 78
+RADAR_CX = RADAR_CY = 110
+ICON_R = RADAR_R + 20
+
+# 16×16 stroke icons, drawn centered on each axis tip.
+VITAL_ICONS = {
+    "hrv": "M1 9h3l1.5-4 3 8 2-6 1 2H15",
+    "rhr": "M8 14s-6-3.6-6-8a3.2 3.2 0 0 1 6-1.6A3.2 3.2 0 0 1 14 6c0 4.4-6 8-6 8z",
+    "respiration": "M2 6h8a2 2 0 1 0-2-2M2 10h10a2 2 0 1 1-2 2M2 8h5",
+    "skin_temp_c": "M6.5 2.5a1.5 1.5 0 0 1 3 0v7a3 3 0 1 1-3 0zM8 7v5",
+    "spo2": "M8 1.5S3 7 3 10a5 5 0 0 0 10 0c0-3-5-8.5-5-8.5z",
+}
+
+
+def _radar_r(z: float) -> float:
+    z = max(-RADAR_Z_MAX, min(RADAR_Z_MAX, z))
+    return (z + RADAR_Z_MAX) / (2 * RADAR_Z_MAX) * RADAR_R
+
+
+def _radar_xy(axis: int, r: float) -> tuple[float, float]:
+    angle = -math.pi / 2 + axis * 2 * math.pi / len(VITALS)
+    return RADAR_CX + r * math.cos(angle), RADAR_CY + r * math.sin(angle)
+
+
+def _ring(z: float) -> str:
+    return " ".join(
+        f"{x:.1f},{y:.1f}" for x, y in (_radar_xy(i, _radar_r(z)) for i in range(len(VITALS)))
+    )
+
+
+def fetch_vitals_radar() -> dict:
+    """Last RADAR_NIGHTS nights of the five vitals, normalized to each one's typical range."""
+    raw = _fetch_daily(RADAR_NIGHTS)
+
+    per_axis = []  # [(chart, {day: value}, {day: (lo, hi)})]
+    for chart in VITALS:
+        s = chart["series"][0]
+        transform = s["transform"] or (lambda v: v)
+        values = {d: transform(v) for d, v in raw.get(s["field"], {}).items()}
+        if chart["baseline"] == "garmin_hrv":
+            lows, highs = raw.get(HRV_BAND_FIELDS[0], {}), raw.get(HRV_BAND_FIELDS[1], {})
+            band = {d: (lows[d], highs[d]) for d in lows if d in highs}
+        else:
+            band = _rolling_band(values)
+        per_axis.append((chart, values, band))
+
+    def z(values, band, day) -> float | None:
+        if day not in values or day not in band:
+            return None
+        lo, hi = band[day]
+        half = (hi - lo) / 2 or 1.0
+        return (values[day] - (lo + hi) / 2) / half
+
+    nights = sorted({d for _, values, _ in per_axis for d in values}, reverse=True)
+    nights = nights[:RADAR_NIGHTS]
+    if not nights:
+        return {"has_data": False}
+
+    # Oldest first so last night draws on top. A night needs every axis to make a polygon.
+    polys = []
+    for age, day in sorted(enumerate(nights), key=lambda t: -t[0]):
+        zs = [z(values, band, day) for _, values, band in per_axis]
+        if any(v is None for v in zs):
+            continue
+        pts = [_radar_xy(i, _radar_r(v)) for i, v in enumerate(zs) if v is not None]
+        fade = age / RADAR_NIGHTS
+        polys.append(
+            {
+                "points": " ".join(f"{x:.1f},{y:.1f}" for x, y in pts),
+                "vertices": pts if age == 0 else [],
+                "opacity": 1.0 if age == 0 else round(0.5 * (1 - fade), 2),
+                "width": 2.5 if age == 0 else round(1.4 - fade, 2),
+                "day": day,
+            }
+        )
+
+    last = nights[0]
+    axes = []
+    for i, (chart, values, band) in enumerate(per_axis):
+        field = chart["series"][0]["field"]
+        latest = (last, values[last]) if last in values else None
+        status = _latest_status(chart, latest, band)
+        ix, iy = _radar_xy(i, ICON_R)
+        axes.append(
+            {
+                "label": chart["label"],
+                "unit": chart["unit"],
+                "icon": VITAL_ICONS[field],
+                "icon_x": ix - 8,
+                "icon_y": iy - 8,
+                "spoke": _radar_xy(i, RADAR_R),
+                "value": _fmt_value(latest[1], chart) if latest else "–",
+                "flag": status["flag"],
+                "tc": status["tc"],
+            }
+        )
+
+    outside = [a["label"] for a in axes if a["flag"] in ("Above typical", "Below typical")]
+    return {
+        "has_data": True,
+        "polys": polys,
+        "axes": axes,
+        "center": (RADAR_CX, RADAR_CY),
+        "typical_outer": _ring(1),
+        "typical_inner": _ring(-1),
+        "mid_ring": _ring(0),
+        "outer_ring": _ring(RADAR_Z_MAX),
+        "last_night": last,
+        "outside": outside,
+    }
+
+
+@router.get("/partials/fitness-vitals", response_class=HTMLResponse)
+async def fitness_vitals_partial(request: Request, _user: str = Depends(require_auth)):
+    """Front-page radar of last night's vitals vs. the six before."""
+    try:
+        data = await asyncio.to_thread(fetch_vitals_radar)
+    except Exception as e:
+        logger.error(f"Failed to fetch vitals: {e}")
+        data = {"has_data": False, "error": str(e)}
+    return templates.TemplateResponse(request, "partials/fitness_vitals.html", data)

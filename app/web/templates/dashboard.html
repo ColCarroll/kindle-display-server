@@ -31,6 +31,15 @@
 </section>
 
 <section class="dashboard-section">
+    <div id="fitness-vitals-container"
+         hx-get="/partials/fitness-vitals"
+         hx-trigger="load, every 30m"
+         hx-swap="innerHTML">
+        <span class="loading"></span>
+    </div>
+</section>
+
+<section class="dashboard-section">
     <div id="strava-container"
          hx-get="/partials/strava"
          hx-trigger="load, every 5m"
