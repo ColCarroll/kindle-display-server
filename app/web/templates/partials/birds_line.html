@@ -1,0 +1,8 @@
+{% if not hidden -%}
+{% if health and health.status == "red" -%}
+<a href="/birds" class="birds-line birds-line-down" title="{{ health.title }}">Bird detector down!
+    {%- if health.age %} <span class="birds-line-muted">last heard from {{ health.age }} ago</span>{% endif %}</a>
+{%- else -%}
+<a href="/birds" class="birds-line">{{ summary.species }} species · {{ summary.detections }} detections today</a>
+{%- endif %}
+{%- endif %}

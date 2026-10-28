@@ -6,12 +6,6 @@
 {% block content %}
 <div class="birds-top">
     <a href="/" class="birds-back">← Dashboard</a>
-    <div class="birds-view-toggle">
-        {% for key, label in views.items() %}
-        <a href="/birds?view={{ key }}"
-           class="birds-view-btn{% if key == view %} active{% endif %}">{{ label }}</a>
-        {% endfor %}
-    </div>
 </div>
 
 {% if error %}
@@ -32,6 +26,8 @@
         <div class="birds-trend-row">
             <svg viewBox="0 0 100 30" preserveAspectRatio="none" class="birds-spark"
                  role="img" aria-label="{{ title }} over 30 days">
+                <line x1="0" y1="29" x2="100" y2="29" class="birds-spark-base"
+                      vector-effect="non-scaling-stroke"/>
                 <polyline points="{{ t.points }}" fill="none" stroke="currentColor"
                           stroke-width="1.2" vector-effect="non-scaling-stroke"
                           stroke-linejoin="round" stroke-linecap="round"/>
@@ -43,44 +39,7 @@
     {% endfor %}
 </div>
 
-<h2 class="birds-section">{{ "Today" if view == "today" else "Last 7 days" }} by hour</h2>
-{% if heatmap.rows %}
-<div class="birds-heatmap">
-    {% if daylight %}
-    <div class="bh-row bh-axis-row">
-        <div class="bh-name"></div>
-        <div class="bh-sun-line">
-            <span class="bh-sun" style="left: {{ daylight.sunrise.pct }}%"
-                  title="Sunrise {{ daylight.sunrise.label }}">↑{{ daylight.sunrise.label }}</span>
-            <span class="bh-sun" style="left: {{ daylight.sunset.pct }}%"
-                  title="Sunset {{ daylight.sunset.label }}">↓{{ daylight.sunset.label }}</span>
-        </div>
-    </div>
-    {% endif %}
-    <div class="bh-row bh-axis-row" aria-hidden="true">
-        <div class="bh-name"></div>
-        <div class="bh-cells">
-            {% for h in range(24) %}<span class="bh-tick">{% if h % 6 == 0 %}{{ h }}{% endif %}</span>{% endfor %}
-        </div>
-    </div>
-    {% for row in heatmap.rows %}
-    <div class="bh-row">
-        <div class="bh-name">{{ row.name }} <span class="bh-total">{{ row.total }}</span></div>
-        <div class="bh-cells">
-            {%- for c in row.cells -%}
-            <span class="bh-cell{% if not c.alpha %} bh-zero{% endif %}{% if daylight and daylight.night[loop.index0] %} bh-night{% endif %}{% if c.now %} bh-now{% endif %}"
-                  {% if c.alpha %}style="--a: {{ c.alpha }}"{% endif %} title="{{ c.label }}"></span>
-            {%- endfor -%}
-        </div>
-    </div>
-    {% endfor %}
-    {% if heatmap.more %}
-    <p class="birds-note">+ {{ heatmap.more }} more species</p>
-    {% endif %}
-</div>
-{% else %}
-<p class="birds-note">No bird detections yet {{ "today" if view == "today" else "this week" }}.</p>
-{% endif %}
+{% include "partials/birds_heatmap.html" %}
 
 <h2 class="birds-section">Arrivals</h2>
 {% if arrivals %}
@@ -165,6 +124,10 @@
     height: 2.2rem;
     color: #2e7d32;
 }
+.birds-spark-base {
+    stroke: #ccc;
+    stroke-width: 1;
+}
 .birds-trend-value {
     font-size: 1.15rem;
     font-weight: bold;
@@ -183,6 +146,16 @@
     font-size: 1.1rem;
     margin: 1.5rem 0 0.6rem;
 }
+.birds-heatmap-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    max-width: 760px;
+    margin: 1.5rem 0 0.6rem;
+}
+.birds-heatmap-header .birds-section { margin: 0; }
 
 /* Heatmap: names above their strips on phones, beside them on wider screens. */
 .birds-heatmap { max-width: 760px; }

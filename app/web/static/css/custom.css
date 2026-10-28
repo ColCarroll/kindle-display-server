@@ -787,44 +787,35 @@ details[open] .pf-section-toggle::before {
     margin: 0.5rem 0 0.75rem;
 }
 
-/* ── Bird card (dashboard) ── */
+/* ── Bird line (dashboard, under the Wentworth weather heading) ── */
 
-.birds-card h3 {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
+.birds-line-slot {
+    margin: -0.1rem 0 0.5rem;
+    font-size: 1rem;
 }
 
-.birds-card-title {
-    color: inherit;
-    text-decoration: none;
-}
-
-.birds-card-line {
-    font-size: 0.95rem;
-    line-height: 1.45;
-    margin: 0.25rem 0;
-}
-
-.birds-card-muted {
-    color: #999;
-    font-size: 0.8rem;
-}
-
-.birds-card-spark {
-    display: block;
-    max-width: 22rem;
-    margin: 0.3rem 0 0.5rem;
+/* Beat tufte.css's a:link color and underline styling */
+.birds-line-slot a.birds-line {
     color: #2e7d32;
     text-decoration: none;
+    background: none;
+    text-shadow: none;
 }
 
-.birds-card-spark svg {
-    display: block;
-    width: 100%;
-    height: 1.8rem;
+.birds-line-slot a.birds-line:hover { text-decoration: underline; }
+
+.birds-line-slot a.birds-line-down {
+    color: #c03030;
+    font-weight: bold;
+}
+
+.birds-line-muted {
+    color: #999;
+    font-weight: normal;
+    font-size: 0.85rem;
 }
 
 @media (prefers-color-scheme: dark) {
-    .birds-card-spark { color: #66bb6a; }
+    .birds-line-slot a.birds-line { color: #66bb6a; }
+    .birds-line-slot a.birds-line-down { color: #e06060; }
 }

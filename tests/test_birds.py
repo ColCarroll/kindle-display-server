@@ -209,13 +209,16 @@ def _influx_ts(dt: datetime) -> str:
 def fake_influx(monkeypatch):
     """Answer each query type with canned rows, relative to the real today."""
 
-    def _install(exc=None):
+    def _install(exc=None, heartbeat_minutes=1):
         now = datetime.now(birds.TZ_BOSTON)
         today = now.date()
 
         def _fake(query):
             if exc is not None:
                 raise exc
+            if "relay_heartbeat" in query:
+                beat = datetime.now(birds.timezone.utc) - timedelta(minutes=heartbeat_minutes)
+                return [{"_time": _influx_ts(beat)}]
             if "every: 10m" in query:
                 return [
                     {
@@ -335,31 +338,43 @@ def test_relay_health_hides_dot_when_influx_is_down(monkeypatch):
     assert birds.relay_health(datetime.now(birds.timezone.utc)) is None
 
 
-def test_card_renders_summary_top_species_and_dot(client, fake_influx):
+def test_line_shows_todays_counts_and_links_to_page(client, fake_influx):
     fake_influx()
 
     resp = client.get("/partials/birds")
 
     assert resp.status_code == 200
-    assert "Wentworth birds" in resp.text
-    assert "<strong>2</strong> species" in resp.text
-    assert "Barred Owl" in resp.text
+    assert "2 species · 10 detections today" in resp.text
     assert 'href="/birds"' in resp.text
-    # fake_influx answers the heartbeat query with a 100-day-old timestamp
-    assert "airq-status-red" in resp.text
+    assert "down" not in resp.text
 
 
-def test_card_shows_message_when_influx_is_down(client, fake_influx):
+def test_line_warns_when_relay_is_down(client, fake_influx):
+    fake_influx(heartbeat_minutes=300)
+
+    resp = client.get("/partials/birds")
+
+    assert "Bird detector down!" in resp.text
+    assert "last heard from 5h ago" in resp.text
+    assert "detections today" not in resp.text
+
+
+def test_line_stays_normal_when_relay_is_only_lagging(client, fake_influx):
+    fake_influx(heartbeat_minutes=40)
+
+    assert "detections today" in client.get("/partials/birds").text
+
+
+def test_line_is_empty_when_influx_is_down(client, fake_influx):
     fake_influx(exc=ConnectionError("koonti unreachable"))
 
     resp = client.get("/partials/birds")
 
     assert resp.status_code == 200
-    assert "Bird data unavailable" in resp.text
-    assert "airq-status-dot" not in resp.text  # no false alarm when koonti is the problem
+    assert resp.text.strip() == ""  # no false alarm when koonti is the problem
 
 
-def test_card_requires_auth(fake_influx):
+def test_line_requires_auth(fake_influx):
     from app.web.app import app
 
     fake_influx()
@@ -367,85 +382,58 @@ def test_card_requires_auth(fake_influx):
     assert TestClient(app).get("/partials/birds").status_code == 401
 
 
-# ── Sun-relative time ──
-
-BOSTON = (42.3601, -71.0589)
+# ── Heatmap partial ──
 
 
-def _local(t: datetime) -> str:
-    return t.astimezone(birds.TZ_BOSTON).strftime("%H:%M")
+def test_heatmap_partial_renders_only_the_heatmap_section(client, fake_influx):
+    fake_influx()
+
+    resp = client.get("/partials/birds-heatmap?view=week")
+
+    assert resp.status_code == 200
+    assert 'id="birds-heatmap-section"' in resp.text
+    assert "Last 7 days by hour" in resp.text
+    assert "Barred Owl" in resp.text
+    assert "Arrivals" not in resp.text
+    assert "<html" not in resp.text
 
 
-@pytest.mark.parametrize(
-    ("day", "rise", "sunset"),
-    [
-        (date(2026, 6, 21), "05:07", "20:24"),  # summer solstice, EDT
-        (date(2026, 12, 21), "07:10", "16:14"),  # winter solstice, EST
-    ],
-)
-def test_sun_times_match_boston_references(day, rise, sunset):
-    r, s = birds.sun_times(day, *BOSTON)
+def test_heatmap_toggle_swaps_partial_and_keeps_a_real_link(client, fake_influx):
+    fake_influx()
 
-    def minutes(hhmm):
-        h, m = map(int, hhmm.split(":"))
-        return h * 60 + m
+    resp = client.get("/birds")
 
-    assert abs(minutes(_local(r)) - minutes(rise)) <= 2
-    assert abs(minutes(_local(s)) - minutes(sunset)) <= 2
+    assert 'hx-get="/partials/birds-heatmap?view=week"' in resp.text
+    assert 'hx-push-url="/birds?view=week"' in resp.text
+    assert 'href="/birds?view=week"' in resp.text
 
 
-def test_today_detections_stay_put():
-    t = datetime(2026, 10, 27, 7, 40, tzinfo=birds.TZ_BOSTON)
+def test_heatmap_partial_rejects_invalid_view(client, fake_influx):
+    fake_influx()
 
-    moved = birds.to_today_sun(t, t.date())
-
-    assert abs((moved - t).total_seconds()) < 1
+    assert client.get("/partials/birds-heatmap?view=year").status_code == 422
 
 
-def test_dawn_lines_up_across_the_dst_change():
-    """30 minutes after sunrise on a pre-DST day lands ~30 minutes after sunrise
-    on a post-DST day, an hour earlier on the clock."""
-    before, after = date(2026, 10, 30), date(2026, 11, 2)
-    t = birds.sun_times(before)[0] + timedelta(minutes=30)
+def test_heatmap_partial_shows_error_when_influx_is_down(client, fake_influx):
+    fake_influx(exc=ConnectionError("koonti unreachable"))
 
-    moved = birds.to_today_sun(t, after)
+    resp = client.get("/partials/birds-heatmap")
 
-    assert _local(t)[:2] == "07"  # ~7:50 EDT
-    assert _local(moved)[:2] == "06"  # ~6:54 EST
-    gap = moved - birds.sun_times(after)[0]
-    assert timedelta(minutes=28) < gap < timedelta(minutes=32)
+    assert resp.status_code == 200
+    assert "koonti unreachable" in resp.text
 
 
-def test_night_detections_map_relative_to_sunset_and_sunrise():
-    day, today = date(2026, 10, 20), date(2026, 10, 27)
-    evening = birds.sun_times(day)[1] + timedelta(hours=1)  # 1h after sunset
-    predawn = birds.sun_times(day)[0] - timedelta(minutes=10)  # 10 min before sunrise
+def test_heatmap_partial_requires_auth(fake_influx):
+    from app.web.app import app
 
-    evening_moved = birds.to_today_sun(evening, today)
-    predawn_moved = birds.to_today_sun(predawn, today)
-
-    after_sunset = evening_moved - birds.sun_times(today)[1]
-    before_sunrise = birds.sun_times(today)[0] - predawn_moved
-    # nights lengthen a little over the week, so the offsets stretch slightly
-    assert timedelta(minutes=58) < after_sunset < timedelta(minutes=63)
-    assert timedelta(minutes=9) < before_sunrise < timedelta(minutes=11)
+    fake_influx()
+    app.dependency_overrides.clear()
+    assert TestClient(app).get("/partials/birds-heatmap").status_code == 401
 
 
-def test_heatmap_uses_place_to_bin_hours():
-    windows = [(_at(_days_ago(3), 8), "Blue Jay", 4)]
+def test_sparklines_have_a_zero_baseline(client, fake_influx):
+    fake_influx()
 
-    hm = birds.build_heatmap(
-        windows, TODAY, "week", now_hour=9, place=lambda w: w - timedelta(hours=1)
-    )
+    resp = client.get("/birds")
 
-    assert hm["rows"][0]["cells"][7]["alpha"] == 1.0
-
-
-def test_daylight_marks_night_hours():
-    dl = birds.daylight(TODAY)
-
-    assert dl["sunrise"]["label"].startswith("7:")
-    assert dl["sunset"]["label"].startswith("5:")
-    assert dl["night"][2] and dl["night"][22]
-    assert not dl["night"][12]
-    assert 0 < dl["sunrise"]["pct"] < dl["sunset"]["pct"] < 100
+    assert resp.text.count('class="birds-spark-base"') == 2

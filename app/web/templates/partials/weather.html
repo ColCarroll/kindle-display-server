@@ -25,6 +25,9 @@
                     title="Remove location">×</button>
             {% endif %}
         </div>
+        {% if location.city == "Wentworth" %}
+        <div hx-get="/partials/birds" hx-trigger="load" hx-swap="innerHTML" class="birds-line-slot"></div>
+        {% endif %}
         <p class="weather-current">
             <span class="temp-high">{{ location.current_temp }}°F</span>
             {% if location.current_feels_like and (location.current_feels_like - location.current_temp)|abs >= 3 %}

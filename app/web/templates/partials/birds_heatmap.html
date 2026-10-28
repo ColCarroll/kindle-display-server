@@ -1,0 +1,56 @@
+<section id="birds-heatmap-section">
+<div class="birds-heatmap-header">
+    <h2 class="birds-section">{{ "Today" if view == "today" else "Last 7 days" }} by hour</h2>
+    <div class="birds-view-toggle">
+        {% for key, label in views.items() %}
+        <a href="/birds?view={{ key }}"
+           hx-get="/partials/birds-heatmap?view={{ key }}"
+           hx-target="#birds-heatmap-section"
+           hx-swap="outerHTML"
+           hx-push-url="/birds?view={{ key }}"
+           class="birds-view-btn{% if key == view %} active{% endif %}">{{ label }}</a>
+        {% endfor %}
+    </div>
+</div>
+{% if heatmap_error %}
+<div class="error-message">{{ heatmap_error }}</div>
+{% else %}
+{% if heatmap.rows %}
+<div class="birds-heatmap">
+    {% if daylight %}
+    <div class="bh-row bh-axis-row">
+        <div class="bh-name"></div>
+        <div class="bh-sun-line">
+            <span class="bh-sun" style="left: {{ daylight.sunrise.pct }}%"
+                  title="Sunrise {{ daylight.sunrise.label }}">↑{{ daylight.sunrise.label }}</span>
+            <span class="bh-sun" style="left: {{ daylight.sunset.pct }}%"
+                  title="Sunset {{ daylight.sunset.label }}">↓{{ daylight.sunset.label }}</span>
+        </div>
+    </div>
+    {% endif %}
+    <div class="bh-row bh-axis-row" aria-hidden="true">
+        <div class="bh-name"></div>
+        <div class="bh-cells">
+            {% for h in range(24) %}<span class="bh-tick">{% if h % 6 == 0 %}{{ h }}{% endif %}</span>{% endfor %}
+        </div>
+    </div>
+    {% for row in heatmap.rows %}
+    <div class="bh-row">
+        <div class="bh-name">{{ row.name }} <span class="bh-total">{{ row.total }}</span></div>
+        <div class="bh-cells">
+            {%- for c in row.cells -%}
+            <span class="bh-cell{% if not c.alpha %} bh-zero{% endif %}{% if daylight and daylight.night[loop.index0] %} bh-night{% endif %}{% if c.now %} bh-now{% endif %}"
+                  {% if c.alpha %}style="--a: {{ c.alpha }}"{% endif %} title="{{ c.label }}"></span>
+            {%- endfor -%}
+        </div>
+    </div>
+    {% endfor %}
+    {% if heatmap.more %}
+    <p class="birds-note">+ {{ heatmap.more }} more species</p>
+    {% endif %}
+</div>
+{% else %}
+<p class="birds-note">No bird detections yet {{ "today" if view == "today" else "this week" }}.</p>
+{% endif %}
+{% endif %}
+</section>

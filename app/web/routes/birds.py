@@ -278,14 +278,32 @@ def find_arrivals(
     return sorted(arrivals, key=lambda a: (a["date"], a["name"]), reverse=True)
 
 
+def fetch_heatmap(view: str = DEFAULT_VIEW) -> dict:
+    """Heatmap for today or the last WEEK_DAYS days, with today's sunrise/sunset."""
+    now = datetime.now(TZ_BOSTON)
+    today = now.date()
+    week_start = _local_midnight(today - timedelta(days=WEEK_DAYS - 1))
+    windows = _parse_counts(_query_influx(_counts_query(week_start, HEATMAP_EVERY)))
+    return {
+        "view": view,
+        "views": VIEWS,
+        "heatmap": build_heatmap(
+            windows,
+            today,
+            view,
+            now.hour,
+            place=lambda when: to_today_sun(when + HEATMAP_WINDOW_MID, today),
+        ),
+        "daylight": daylight(today),
+    }
+
+
 def fetch_birds_data(view: str = DEFAULT_VIEW) -> dict:
     """Query InfluxDB and assemble everything the birds page shows."""
     now = datetime.now(TZ_BOSTON)
     today = now.date()
     history_days = max(TREND_DAYS, ARRIVAL_WINDOW_DAYS + ARRIVAL_ABSENCE_DAYS)
 
-    week_start = _local_midnight(today - timedelta(days=WEEK_DAYS - 1))
-    windows = _parse_counts(_query_influx(_counts_query(week_start, HEATMAP_EVERY)))
     daily = _parse_counts(
         _query_influx(_counts_query(_local_midnight(today - timedelta(days=history_days)), "1d"))
     )
@@ -298,19 +316,10 @@ def fetch_birds_data(view: str = DEFAULT_VIEW) -> dict:
 
     trend = build_trend(daily, today, earliest)
     return {
-        "view": view,
-        "views": VIEWS,
+        **fetch_heatmap(view),
         "site_label": SITE_LABEL,
         "today_label": now.strftime("%a %b %-d"),
         "trend": trend,
-        "heatmap": build_heatmap(
-            windows,
-            today,
-            view,
-            now.hour,
-            place=lambda when: to_today_sun(when + HEATMAP_WINDOW_MID, today),
-        ),
-        "daylight": daylight(today),
         "arrivals": find_arrivals(daily, today, earliest),
         "arrival_absence_days": ARRIVAL_ABSENCE_DAYS,
         "arrival_window_days": ARRIVAL_WINDOW_DAYS,
@@ -338,7 +347,7 @@ def relay_health(now: datetime) -> dict | None:
     except Exception:
         return None  # don't alarm when koonti is the problem
     if not rows:
-        return {"status": "red", "title": "No relay heartbeat in 7 days"}
+        return {"status": "red", "title": "No relay heartbeat in 7 days", "age": None}
     age = now - datetime.fromtimestamp(_parse_ts(rows[0]["_time"]), timezone.utc)
     if age <= HEALTHY_WITHIN:
         status = "green"
@@ -346,29 +355,55 @@ def relay_health(now: datetime) -> dict | None:
         status = "yellow"
     else:
         status = "red"
-    return {"status": status, "title": f"Cabin relay last checked in {_fmt_age(age)} ago"}
+    age_label = _fmt_age(age)
+    return {
+        "status": status,
+        "title": f"Cabin relay last checked in {age_label} ago",
+        "age": age_label,
+    }
 
 
-CARD_TOP_SPECIES = 3
-CARD_ARRIVALS = 3
+def today_summary() -> dict:
+    """Species and detection counts so far today (one small query)."""
+    today = datetime.now(TZ_BOSTON).date()
+    rows = _parse_counts(_query_influx(_counts_query(_local_midnight(today), "1d")))
+    counts = Counter()
+    for when, name, count in rows:
+        if when.date() == today:
+            counts[name] += count
+    return {"species": len(counts), "detections": sum(counts.values())}
 
 
 @router.get("/partials/birds", response_class=HTMLResponse)
-async def birds_card_partial(request: Request, _user: str = Depends(require_auth)):
-    """Compact bird summary for the main dashboard."""
+async def birds_line_partial(request: Request, _user: str = Depends(require_auth)):
+    """One line for the dashboard's Wentworth weather: today's counts, or a warning
+    when the cabin relay has stopped checking in. Renders nothing if InfluxDB is down."""
+    health = await asyncio.to_thread(relay_health, datetime.now(timezone.utc))
+    context: dict[str, object] = {"health": health}
+    if health is None:
+        context["hidden"] = True
+    elif health["status"] != "red":
+        try:
+            context["summary"] = await asyncio.to_thread(today_summary)
+        except Exception as e:
+            logger.error(f"Failed to fetch bird summary: {e}")
+            context["hidden"] = True
+    return templates.TemplateResponse(request, "partials/birds_line.html", context)
+
+
+@router.get("/partials/birds-heatmap", response_class=HTMLResponse)
+async def birds_heatmap_partial(
+    request: Request,
+    view: str = Query(default=DEFAULT_VIEW, pattern="^(today|week)$"),
+    _user: str = Depends(require_auth),
+):
+    """Just the heatmap section, so the Today / 7 days toggle redraws only that."""
     try:
-        data = await asyncio.to_thread(fetch_birds_data, "today")
-        context: dict[str, object] = {
-            "site_label": SITE_LABEL,
-            "trend": data["trend"],
-            "top": data["heatmap"]["rows"][:CARD_TOP_SPECIES],
-            "arrivals": data["arrivals"][:CARD_ARRIVALS],
-        }
+        data = await asyncio.to_thread(fetch_heatmap, view)
     except Exception as e:
-        logger.error(f"Failed to fetch bird card data: {e}")
-        context = {"site_label": SITE_LABEL, "error": "Bird data unavailable"}
-    context["health"] = await asyncio.to_thread(relay_health, datetime.now(timezone.utc))
-    return templates.TemplateResponse(request, "partials/birds_card.html", context)
+        logger.error(f"Failed to fetch bird heatmap: {e}")
+        data = {"view": view, "views": VIEWS, "heatmap_error": str(e)}
+    return templates.TemplateResponse(request, "partials/birds_heatmap.html", data)
 
 
 @router.get("/birds", response_class=HTMLResponse)
@@ -383,4 +418,4 @@ async def birds(
     except Exception as e:
         logger.error(f"Failed to fetch bird data: {e}")
         data = {"view": view, "views": VIEWS, "site_label": SITE_LABEL, "error": str(e)}
-    return templates.TemplateResponse("birds.html", {"request": request, **data})
+    return templates.TemplateResponse(request, "birds.html", data)
