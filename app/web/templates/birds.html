@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Birds · {{ site_label }}{% endblock %}
+{% block header %}Birds · {{ site_label }}{% endblock %}
+
+{% block content %}
+<div class="birds-top">
+    <a href="/" class="birds-back">← Dashboard</a>
+    <div class="birds-view-toggle">
+        {% for key, label in views.items() %}
+        <a href="/birds?view={{ key }}"
+           class="birds-view-btn{% if key == view %} active{% endif %}">{{ label }}</a>
+        {% endfor %}
+    </div>
+</div>
+
+{% if error %}
+<div class="error-message">{{ error }}</div>
+{% endif %}
+
+{% if trend %}
+<p class="birds-summary">
+    {{ today_label }} · <strong>{{ trend.species.today }}</strong> species,
+    <strong>{{ trend.detections.today }}</strong> detections
+</p>
+
+<div class="birds-trends">
+    {% for key, title in [("detections", "Detections / day"), ("species", "Species / day")] %}
+    {% set t = trend[key] %}
+    <div class="birds-trend">
+        <div class="birds-trend-label">{{ title }}</div>
+        <div class="birds-trend-row">
+            <svg viewBox="0 0 100 30" preserveAspectRatio="none" class="birds-spark"
+                 role="img" aria-label="{{ title }} over 30 days">
+                <polyline points="{{ t.points }}" fill="none" stroke="currentColor"
+                          stroke-width="1.2" vector-effect="non-scaling-stroke"
+                          stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+            <span class="birds-trend-value">{{ t.today }}</span>
+        </div>
+        <div class="birds-trend-axis"><span>{{ trend.first_label }}</span><span>max {{ t.max }}</span></div>
+    </div>
+    {% endfor %}
+</div>
+
+<h2 class="birds-section">{{ "Today" if view == "today" else "Last 7 days" }} by hour</h2>
+{% if heatmap.rows %}
+<div class="birds-heatmap">
+    <div class="bh-row bh-axis-row" aria-hidden="true">
+        <div class="bh-name"></div>
+        <div class="bh-cells">
+            {% for h in range(24) %}<span class="bh-tick">{% if h % 6 == 0 %}{{ h }}{% endif %}</span>{% endfor %}
+        </div>
+    </div>
+    {% for row in heatmap.rows %}
+    <div class="bh-row">
+        <div class="bh-name">{{ row.name }} <span class="bh-total">{{ row.total }}</span></div>
+        <div class="bh-cells">
+            {%- for c in row.cells -%}
+            <span class="bh-cell{% if not c.alpha %} bh-zero{% endif %}{% if c.now %} bh-now{% endif %}"
+                  {% if c.alpha %}style="--a: {{ c.alpha }}"{% endif %} title="{{ c.label }}"></span>
+            {%- endfor -%}
+        </div>
+    </div>
+    {% endfor %}
+    {% if heatmap.more %}
+    <p class="birds-note">+ {{ heatmap.more }} more species</p>
+    {% endif %}
+</div>
+{% else %}
+<p class="birds-note">No bird detections yet {{ "today" if view == "today" else "this week" }}.</p>
+{% endif %}
+
+<h2 class="birds-section">Arrivals</h2>
+{% if arrivals %}
+<ul class="birds-arrivals">
+    {% for a in arrivals %}
+    <li><span class="birds-arrival-date">{{ a.label }}</span> {{ a.name }} <span class="bh-total">{{ a.count }}</span></li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="birds-note">No new arrivals in the last {{ arrival_window_days }} days.</p>
+{% endif %}
+
+<p class="birds-footnote">
+    Birds only; detections reviewed as false positives are excluded. Arrivals are species
+    not heard in the previous {{ arrival_absence_days }} days, with at least
+    {{ arrival_min_detections }} detections since (count shown). Detection counts reflect
+    relative activity rather than individual birds.
+</p>
+{% endif %}
+
+<style>
+.birds-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    max-width: 760px;
+}
+.birds-back {
+    color: #888;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+.birds-back:hover { color: #333; }
+
+.birds-view-toggle {
+    display: flex;
+    gap: 0.25rem;
+}
+.birds-view-btn {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.85rem;
+    color: #888;
+    text-decoration: none;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+.birds-view-btn:hover { color: #333; border-color: #aaa; }
+.birds-view-btn.active { color: #333; border-color: #888; font-weight: bold; }
+
+.birds-summary {
+    font-size: 1rem;
+    margin: 0 0 1rem;
+}
+
+.birds-trends {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem 2.5rem;
+    max-width: 680px;
+    margin-bottom: 1.5rem;
+}
+@media (max-width: 520px) {
+    .birds-trends { grid-template-columns: 1fr; }
+}
+.birds-trend-label {
+    font-size: 0.85rem;
+    color: #666;
+}
+.birds-trend-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.birds-spark {
+    flex: 1;
+    height: 2.2rem;
+    color: #2e7d32;
+}
+.birds-trend-value {
+    font-size: 1.15rem;
+    font-weight: bold;
+    min-width: 2.5ch;
+    text-align: right;
+}
+.birds-trend-axis {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: #aaa;
+    margin-right: 3.1ch;
+}
+
+.birds-section {
+    font-size: 1.1rem;
+    margin: 1.5rem 0 0.6rem;
+}
+
+/* Heatmap: names above their strips on phones, beside them on wider screens. */
+.birds-heatmap { max-width: 760px; }
+.bh-row { margin-bottom: 0.45rem; }
+.bh-name {
+    font-size: 0.85rem;
+    color: #444;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.bh-total {
+    color: #aaa;
+    font-size: 0.75rem;
+}
+.bh-cells {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 1px;
+}
+.bh-cell {
+    height: 0.85rem;
+    border-radius: 1px;
+    background: rgba(46, 125, 50, var(--a, 0));
+}
+.bh-cell.bh-zero { background: rgba(128, 128, 128, 0.09); }
+.bh-cell.bh-now { box-shadow: inset 0 0 0 1px #c62828; }
+.bh-axis-row { margin-bottom: 0.15rem; }
+.bh-tick {
+    font-size: 0.65rem;
+    color: #aaa;
+    line-height: 1;
+}
+.bh-axis-row .bh-name { display: none; }
+@media (min-width: 640px) {
+    .bh-row {
+        display: grid;
+        grid-template-columns: 13rem 1fr;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.2rem;
+    }
+    .bh-axis-row .bh-name { display: block; }
+}
+
+.birds-arrivals {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    width: auto;
+}
+.birds-arrivals li {
+    font-size: 0.95rem;
+    line-height: 1.35;
+    margin: 0;
+    padding: 0.1rem 0;
+}
+.birds-arrival-date {
+    display: inline-block;
+    min-width: 4.5rem;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+}
+
+.birds-note {
+    font-size: 0.85rem;
+    color: #888;
+}
+.birds-footnote {
+    font-size: 0.75rem;
+    color: #999;
+    line-height: 1.45;
+    margin-top: 2rem;
+    max-width: 640px;
+}
+
+@media (prefers-color-scheme: dark) {
+    .birds-back:hover, .birds-view-btn:hover, .birds-view-btn.active { color: #ddd; }
+    .bh-name { color: #ccc; }
+    .birds-spark { color: #66bb6a; }
+    .bh-cell { background: rgba(102, 187, 106, var(--a, 0)); }
+    .bh-cell.bh-zero { background: rgba(128, 128, 128, 0.15); }
+}
+</style>
+{% endblock %}

@@ -31,6 +31,15 @@
 </section>
 
 <section class="dashboard-section">
+    <div id="birds-container"
+         hx-get="/partials/birds"
+         hx-trigger="load, every 5m"
+         hx-swap="innerHTML">
+        <span class="loading"></span> Loading birds...
+    </div>
+</section>
+
+<section class="dashboard-section">
     <div id="strava-container"
          hx-get="/partials/strava"
          hx-trigger="load, every 5m"
