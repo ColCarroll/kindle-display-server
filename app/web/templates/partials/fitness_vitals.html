@@ -3,92 +3,53 @@
 {% elif not has_data %}
 <p style="color:#aaa;font-size:0.9rem;font-style:italic;">No Garmin vitals yet.</p>
 {% else %}
-<a href="/fitness" class="vitals-card" title="Fitness details">
+<a href="/fitness" class="vitals-card">
     <div class="strava-stats" style="margin-bottom:0.25rem;">
         <div class="strava-stat">
             <div class="strava-stat-value"><strong>Vitals</strong></div>
-            <div class="strava-stat-label">
-                {{ last_night.strftime('%a %b %-d') }} ·
-                {% if outside %}{{ outside|join(', ') }} outside typical{% else %}all typical{% endif %}
-            </div>
         </div>
     </div>
 
-    <div class="vitals-body">
-        <svg viewBox="0 0 220 220" class="vitals-radar" role="img"
-             aria-label="Radar of last night's vitals against the previous six nights">
-            {# Typical range: the ring between the edges of each vital's personal band #}
-            <polygon points="{{ typical_outer }}" fill="#eef3f8"/>
-            <polygon points="{{ typical_inner }}" fill="#fffff8"/>
-            <polygon points="{{ outer_ring }}" fill="none" stroke="#ebebeb" stroke-width="1"/>
-            <polygon points="{{ mid_ring }}" fill="none" stroke="#c9d6e3" stroke-width="1" stroke-dasharray="2,3"/>
+    <svg viewBox="0 0 {{ width }} {{ height }}" class="vitals-radar" role="img"
+         aria-label="Last night's vitals against the previous six nights">
+        <title>{{ last_night.strftime('%a %b %-d') }} (bold) vs. the six nights before</title>
 
-            {% for a in axes %}
-            <line x1="{{ center[0] }}" y1="{{ center[1] }}" x2="{{ a.spoke[0] }}" y2="{{ a.spoke[1] }}"
-                  stroke="#ebebeb" stroke-width="1"/>
-            <g transform="translate({{ a.icon_x }},{{ a.icon_y }})">
-                <title>{{ a.label }}</title>
-                <path d="{{ a.icon }}" fill="none" stroke="#777" stroke-width="1.4"
-                      stroke-linecap="round" stroke-linejoin="round"/>
-            </g>
-            {% endfor %}
+        {# Typical range: the ring between the edges of each vital's personal band #}
+        <polygon points="{{ typical_outer }}" fill="#eef3f8"/>
+        <polygon points="{{ typical_inner }}" fill="#fffff8"/>
+        <polygon points="{{ outer_ring }}" fill="none" stroke="#ebebeb" stroke-width="1"/>
+        <polygon points="{{ mid_ring }}" fill="none" stroke="#c9d6e3" stroke-width="1" stroke-dasharray="2,3"/>
 
-            {# Six earlier nights fade out behind last night #}
-            {% for p in polys %}
-            <polygon points="{{ p.points }}" fill="none" stroke="#111"
-                     stroke-opacity="{{ p.opacity }}" stroke-width="{{ p.width }}"
-                     stroke-linejoin="round">
-                <title>{{ p.day.strftime('%a %b %-d') }}</title>
-            </polygon>
-            {% for x, y in p.vertices %}
-            <circle cx="{{ x }}" cy="{{ y }}" r="2.5" fill="#111"/>
-            {% endfor %}
-            {% endfor %}
-        </svg>
-        <div class="vitals-key">
-            <svg width="22" height="6" aria-hidden="true"><line x1="0" y1="3" x2="22" y2="3" stroke="#111" stroke-width="2.5"/></svg> last night
-            <svg width="22" height="6" aria-hidden="true"><line x1="0" y1="3" x2="22" y2="3" stroke="#111" stroke-opacity="0.3" stroke-width="1"/></svg> 6 nights before
-            · shaded = typical
-        </div>
+        {% for a in axes %}
+        <line x1="{{ center[0] }}" y1="{{ center[1] }}" x2="{{ a.spoke[0] }}" y2="{{ a.spoke[1] }}"
+              stroke="#ebebeb" stroke-width="1"/>
+        <g>
+            <title>{{ a.label }}: {{ a.value }} {{ a.unit }}{% if a.flag %} · {{ a.flag }}{% endif %}</title>
+            <path transform="translate({{ a.icon_x }},{{ a.icon_y }})" d="{{ a.icon }}"
+                  fill="none" stroke="{{ a.color }}" stroke-width="1.4"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+            <text x="{{ a.text_x }}" y="{{ a.text_y }}" font-size="{{ font_px }}"
+                  fill="{{ a.color }}" style="font-variant-numeric: tabular-nums">{{ a.value }}</text>
+        </g>
+        {% endfor %}
 
-        <ul class="vitals-list">
-            {% for a in axes %}
-            <li>
-                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-                    <path d="{{ a.icon }}" fill="none" stroke="#777" stroke-width="1.4"
-                          stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span class="vitals-label">{{ a.label }}</span>
-                <span class="vitals-value" {% if a.tc %}style="color: {{ a.tc }}"{% endif %}>{{ a.value }}</span>
-                <span class="vitals-unit">{{ a.unit }}</span>
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
+        {# Six earlier nights fade out behind last night #}
+        {% for p in polys %}
+        <polygon points="{{ p.points }}" fill="none" stroke="#111"
+                 stroke-opacity="{{ p.opacity }}" stroke-width="{{ p.width }}"
+                 stroke-linejoin="round">
+            <title>{{ p.day.strftime('%a %b %-d') }}</title>
+        </polygon>
+        {% for x, y in p.vertices %}
+        <circle cx="{{ x }}" cy="{{ y }}" r="2.5" fill="#111"/>
+        {% endfor %}
+        {% endfor %}
+    </svg>
 </a>
 {% endif %}
 
 <style>
 .vitals-card { display: block; color: inherit; text-decoration: none; }
 .vitals-card:hover .strava-stat-value strong { text-decoration: underline; }
-.vitals-body {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    flex-wrap: wrap;
-}
-.vitals-key { order: 3; flex-basis: 100%; font-size: 0.8rem; color: #999; }
-.vitals-key svg { vertical-align: middle; margin-left: 0.4rem; }
-.vitals-radar { width: 220px; max-width: 100%; height: auto; flex-shrink: 0; }
-.vitals-list { list-style: none; margin: 0; padding: 0; font-size: 0.95rem; }
-.vitals-list li {
-    display: grid;
-    grid-template-columns: 16px 9.5rem 3.5rem auto;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.15rem 0;
-}
-.vitals-label { color: #555; }
-.vitals-value { text-align: right; font-variant-numeric: tabular-nums; }
-.vitals-unit { color: #aaa; font-size: 0.8rem; }
+.vitals-radar { width: 270px; max-width: 100%; height: auto; display: block; }
 </style>

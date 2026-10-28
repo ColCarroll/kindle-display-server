@@ -586,8 +586,21 @@ RADAR_NIGHTS = 7
 # doesn't flatten everything else.
 RADAR_Z_MAX = 2.5
 RADAR_R = 78
-RADAR_CX = RADAR_CY = 110
-ICON_R = RADAR_R + 20
+RADAR_W, RADAR_H = 270, 220
+RADAR_CX, RADAR_CY = RADAR_W / 2, 112
+# Axis labels (icon + last night's value) sit just past each spoke tip.
+LABEL_R = RADAR_R + 20
+LABEL_FONT_PX = 13
+LABEL_CHAR_PX = 7.2  # rough advance width of a digit at LABEL_FONT_PX
+ICON_PX, ICON_GAP = 16, 3
+
+# Last night's value color: below / within / above the typical range.
+VITAL_COLORS = {
+    "Below typical": "#2166ac",
+    "Typical": "#111",
+    "Above typical": "#b2182b",
+    None: "#aaa",  # no reading, or not enough history for a baseline
+}
 
 # 16×16 stroke icons, drawn centered on each axis tip.
 VITAL_ICONS = {
@@ -667,22 +680,33 @@ def fetch_vitals_radar() -> dict:
         field = chart["series"][0]["field"]
         latest = (last, values[last]) if last in values else None
         status = _latest_status(chart, latest, band)
-        ix, iy = _radar_xy(i, ICON_R)
+        value = _fmt_value(latest[1], chart) if latest else "–"
+        x, y = _radar_xy(i, LABEL_R)
+        # Center the top label; right-side labels grow outward to the right, left-side to the left.
+        width = ICON_PX + ICON_GAP + len(value) * LABEL_CHAR_PX
+        if abs(x - RADAR_CX) < 10:
+            left = x - width / 2
+        elif x > RADAR_CX:
+            left = x - ICON_PX / 2
+        else:
+            left = x - width + ICON_PX / 2
+        flag = status["flag"] if status["flag"] in VITAL_COLORS else None
         axes.append(
             {
                 "label": chart["label"],
                 "unit": chart["unit"],
                 "icon": VITAL_ICONS[field],
-                "icon_x": ix - 8,
-                "icon_y": iy - 8,
+                "icon_x": left,
+                "icon_y": y - ICON_PX / 2,
+                "text_x": left + ICON_PX + ICON_GAP,
+                "text_y": y + LABEL_FONT_PX * 0.35,
                 "spoke": _radar_xy(i, RADAR_R),
-                "value": _fmt_value(latest[1], chart) if latest else "–",
-                "flag": status["flag"],
-                "tc": status["tc"],
+                "value": value,
+                "flag": flag,
+                "color": VITAL_COLORS[flag],
             }
         )
 
-    outside = [a["label"] for a in axes if a["flag"] in ("Above typical", "Below typical")]
     return {
         "has_data": True,
         "polys": polys,
@@ -693,7 +717,9 @@ def fetch_vitals_radar() -> dict:
         "mid_ring": _ring(0),
         "outer_ring": _ring(RADAR_Z_MAX),
         "last_night": last,
-        "outside": outside,
+        "width": RADAR_W,
+        "height": RADAR_H,
+        "font_px": LABEL_FONT_PX,
     }
 
 

@@ -242,12 +242,23 @@ def test_radar_draws_last_night_bold_over_six_fading_nights(fake_influx):
     ]
 
 
-def test_radar_names_vitals_outside_typical(fake_influx):
+def test_radar_labels_color_low_blue_high_red_typical_black(fake_influx):
     fake_influx(_vitals_rows(40, last={"rhr": 52, "hrv": 40}))
 
-    radar = fitness.fetch_vitals_radar()
+    axes = {a["label"]: a for a in fitness.fetch_vitals_radar()["axes"]}
 
-    assert radar["outside"] == ["HRV", "Resting heart rate"]
+    assert axes["HRV"]["value"] == "40"
+    assert axes["HRV"]["color"] == fitness.VITAL_COLORS["Below typical"]
+    assert axes["Resting heart rate"]["color"] == fitness.VITAL_COLORS["Above typical"]
+    assert axes["Respiration"]["color"] == fitness.VITAL_COLORS["Typical"]
+
+
+def test_radar_labels_stay_inside_the_viewbox(fake_influx):
+    fake_influx(_vitals_rows(40, last={"skin_temp_c": -1.5}))
+    for a in fitness.fetch_vitals_radar()["axes"]:
+        right = a["text_x"] + len(a["value"]) * fitness.LABEL_CHAR_PX
+        assert a["icon_x"] >= 0 and right <= fitness.RADAR_W, a["label"]
+        assert a["icon_y"] >= 0 and a["text_y"] <= fitness.RADAR_H, a["label"]
 
 
 def test_radar_point_on_band_edge_lands_on_typical_ring():
@@ -268,6 +279,7 @@ def test_radar_skips_nights_missing_a_vital(fake_influx):
     assert _today() not in [p["day"] for p in radar["polys"]]
     spo2 = radar["axes"][4]
     assert spo2["value"] == "–"
+    assert spo2["color"] == fitness.VITAL_COLORS[None]
 
 
 def test_vitals_partial_links_to_fitness(client, fake_influx):
@@ -275,7 +287,7 @@ def test_vitals_partial_links_to_fitness(client, fake_influx):
     resp = client.get("/partials/fitness-vitals")
     assert resp.status_code == 200
     assert 'href="/fitness"' in resp.text
-    assert "all typical" in resp.text
+    assert ">Vitals<" in resp.text
 
 
 def test_vitals_partial_without_data(client, fake_influx):
