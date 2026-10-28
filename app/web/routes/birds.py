@@ -34,6 +34,7 @@ SUN_LAT, SUN_LON = 43.870, -71.913
 
 TREND_DAYS = 30  # sparklines: detections and species per day
 WEEK_DAYS = 7  # heatmap "7 days" view
+MONTH_DAYS = 30  # heatmap "30 days" view: sun-aligned, so dawn still lines up across the month
 HEATMAP_ROWS = 15  # most-detected species shown in the heatmap
 HEATMAP_EVERY = "10m"  # fine windows, re-binned by hour after the sun-relative shift
 HEATMAP_WINDOW_MID = timedelta(minutes=5)
@@ -42,7 +43,8 @@ ARRIVAL_ABSENCE_DAYS = 60  # ...after not being heard for at least this long
 BASELINE_DAYS = 2  # species first heard right after records began aren't "arrivals"
 ARRIVAL_MIN_DETECTIONS = 2  # one-off detections are where most false positives live
 
-VIEWS = {"today": "Today", "week": "7 days"}
+VIEWS = {"today": "Today", "week": "7 days", "month": "30 days"}
+VIEW_DAYS = {"today": 1, "week": WEEK_DAYS, "month": MONTH_DAYS}
 DEFAULT_VIEW = "today"
 
 
@@ -184,12 +186,12 @@ def build_heatmap(
     now_hour: int,
     place: Callable[[datetime], datetime] | None = None,
 ) -> dict:
-    """Species × hour-of-day grid for today, or summed over the last WEEK_DAYS days.
+    """Species × hour-of-day grid for today, or summed over the view's last VIEW_DAYS days.
 
     `place` maps a window's time to where it belongs on today's axis (e.g.
     `to_today_sun`); by default the window's own clock hour is used.
     """
-    first_day = today if view == "today" else today - timedelta(days=WEEK_DAYS - 1)
+    first_day = today - timedelta(days=VIEW_DAYS[view] - 1)
     grid: dict[str, list[int]] = defaultdict(lambda: [0] * 24)
     for when, name, count in windows:
         if first_day <= when.date() <= today:
@@ -279,11 +281,11 @@ def find_arrivals(
 
 
 def fetch_heatmap(view: str = DEFAULT_VIEW) -> dict:
-    """Heatmap for today or the last WEEK_DAYS days, with today's sunrise/sunset."""
+    """Heatmap for today or the view's last VIEW_DAYS days, with today's sunrise/sunset."""
     now = datetime.now(TZ_BOSTON)
     today = now.date()
-    week_start = _local_midnight(today - timedelta(days=WEEK_DAYS - 1))
-    windows = _parse_counts(_query_influx(_counts_query(week_start, HEATMAP_EVERY)))
+    start = _local_midnight(today - timedelta(days=VIEW_DAYS[view] - 1))
+    windows = _parse_counts(_query_influx(_counts_query(start, HEATMAP_EVERY)))
     return {
         "view": view,
         "views": VIEWS,
@@ -394,7 +396,7 @@ async def birds_line_partial(request: Request, _user: str = Depends(require_auth
 @router.get("/partials/birds-heatmap", response_class=HTMLResponse)
 async def birds_heatmap_partial(
     request: Request,
-    view: str = Query(default=DEFAULT_VIEW, pattern="^(today|week)$"),
+    view: str = Query(default=DEFAULT_VIEW, pattern="^(today|week|month)$"),
     _user: str = Depends(require_auth),
 ):
     """Just the heatmap section, so the Today / 7 days toggle redraws only that."""
@@ -409,7 +411,7 @@ async def birds_heatmap_partial(
 @router.get("/birds", response_class=HTMLResponse)
 async def birds(
     request: Request,
-    view: str = Query(default=DEFAULT_VIEW, pattern="^(today|week)$"),
+    view: str = Query(default=DEFAULT_VIEW, pattern="^(today|week|month)$"),
     _user: str = Depends(require_auth),
 ):
     """Bird detections page."""

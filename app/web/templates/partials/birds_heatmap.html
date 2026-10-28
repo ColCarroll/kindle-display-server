@@ -1,6 +1,6 @@
 <section id="birds-heatmap-section">
 <div class="birds-heatmap-header">
-    <h2 class="birds-section">{{ "Today" if view == "today" else "Last 7 days" }} by hour</h2>
+    <h2 class="birds-section">{{ "Today" if view == "today" else "Last " ~ views[view] }} by hour</h2>
     <div class="birds-view-toggle">
         {% for key, label in views.items() %}
         <a href="/birds?view={{ key }}"
@@ -50,7 +50,7 @@
     {% endif %}
 </div>
 {% else %}
-<p class="birds-note">No bird detections yet {{ "today" if view == "today" else "this week" }}.</p>
+<p class="birds-note">No bird detections {{ "yet today" if view == "today" else "in the last " ~ views[view] }}.</p>
 {% endif %}
 {% endif %}
 </section>

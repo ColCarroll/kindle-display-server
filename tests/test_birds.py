@@ -56,6 +56,18 @@ def test_heatmap_week_sums_hours_across_days():
     assert not any(c["now"] for c in hm["rows"][0]["cells"])
 
 
+def test_heatmap_month_sums_the_last_30_days():
+    hourly = [
+        (_at(TODAY, 7), "Blue Jay", 4),
+        (_at(_days_ago(3), 7), "Blue Jay", 6),  # inside the week too
+        (_at(_days_ago(29), 7), "Blue Jay", 5),  # oldest day of the month
+        (_at(_days_ago(30), 7), "Blue Jay", 100),  # 31 days back: outside
+    ]
+
+    assert birds.build_heatmap(hourly, TODAY, "month", now_hour=9)["rows"][0]["total"] == 15
+    assert birds.build_heatmap(hourly, TODAY, "week", now_hour=9)["rows"][0]["total"] == 10
+
+
 def test_heatmap_limits_rows_and_reports_the_rest():
     hourly = [(_at(TODAY, 6), f"Bird {i:02d}", 100 - i) for i in range(birds.HEATMAP_ROWS + 3)]
 
