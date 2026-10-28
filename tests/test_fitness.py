@@ -116,15 +116,11 @@ def test_long_ranges_average_by_week(fake_influx):
 
 def test_unit_conversions_and_formatting(fake_influx):
     fake_influx(
-        _rows("skin_temp_c", [-0.5])
-        + _rows("altitude_m", [100])
-        + _rows("race_marathon_s", [10016])
-        + _rows("race_5k_s", [989])
+        _rows("skin_temp_c", [-0.5]) + _rows("race_marathon_s", [10016]) + _rows("race_5k_s", [989])
     )
     data = fitness.fetch_fitness_data("30d")
 
     assert _chart(data, "Skin temp change")["series"][0]["latest_val"] == "-0.9"
-    assert _chart(data, "Altitude")["series"][0]["latest_val"] == "328"
     pace = {x["display"]: x["latest_val"] for x in _chart(data, "Race pace")["series"]}
     assert pace["Marathon"] == "6:22"  # 2:46:56 / 26.2 mi
     assert pace["5K"] == "5:18"  # 16:29 / 3.1 mi

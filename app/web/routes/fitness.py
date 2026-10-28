@@ -75,10 +75,6 @@ def _series(field, display, color=C_MAIN, transform=None, rolling=None, width=1.
     }
 
 
-def _m_to_ft(v):
-    return v * 3.28084
-
-
 def _c_delta_to_f(v):
     return v * 9 / 5
 
@@ -216,13 +212,6 @@ SECTIONS = [
                     _series("max_hr", "Max", color=C_ALT),
                     _series("min_hr", "Min"),
                 ],
-            },
-            {
-                "label": "Altitude",
-                "unit": "ft · daily avg",
-                "decimals": 0,
-                "min_override": 0,
-                "series": [_series("altitude_m", "Altitude", transform=_m_to_ft)],
             },
         ],
     },
