@@ -7,7 +7,7 @@
 <div class="airq-top">
     <a href="/" class="airq-back">← Dashboard</a>
     <div class="airq-range-toggle">
-        {% for r in ["1h", "24h", "7d", "30d"] %}
+        {% for r in ["1h", "24h", "7d", "30d", "all"] %}
         <a href="/air-quality?range={{ r }}&site={{ site|default('home') }}"
            class="airq-range-btn{% if r == current_range %} active{% endif %}">{{ r }}</a>
         {% endfor %}

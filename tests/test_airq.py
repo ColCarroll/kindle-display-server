@@ -168,3 +168,42 @@ def test_alert_partial_requires_auth(fake_influx):
     fake_influx(_rows(**ALL_FRESH))
     app.dependency_overrides.clear()
     assert TestClient(app).get("/partials/airq-alert").status_code == 401
+
+
+def test_all_time_range_starts_at_first_reading(fake_influx):
+    first = datetime(2026, 4, 7, 4, tzinfo=timezone.utc)
+    rows = [
+        {
+            "_field": "co2",
+            "location": "AirQ α",
+            "_value": str(600 + i),
+            "_time": (first + timedelta(days=i)).isoformat().replace("+00:00", "Z"),
+        }
+        for i in range(0, 200, 1)
+    ]
+    fake_influx(rows)
+
+    data = airq.fetch_airq_data("all", "home")
+
+    assert data["edge_label"] == "Apr 6"  # daily windows are stamped at their end
+    co2 = next(m for m in data["metrics"] if m["label"] == "CO₂")
+    xs = [x for seg in co2["series"][0]["segments"] for x, _ in seg]
+    assert 0 < xs[0] < 0.01 and xs[-1] <= 1
+    labels = [m["label"] for m in data["x_markers"]]
+    assert labels[:2] == ["May", "Jun"]
+    assert all(0 < m["x_frac"] < 1 for m in data["x_markers"])
+
+
+def test_all_time_range_is_accepted_by_the_route(fake_influx):
+    from app.web.app import app
+
+    fake_influx([])
+    app.dependency_overrides[require_auth] = lambda: "test@example.com"
+    try:
+        client = TestClient(app)
+        resp = client.get("/air-quality?range=all")
+        assert resp.status_code == 200
+        assert 'class="airq-range-btn active">all</a>' in resp.text
+        assert client.get("/air-quality?range=5y").status_code == 422
+    finally:
+        app.dependency_overrides.clear()

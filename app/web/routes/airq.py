@@ -28,7 +28,13 @@ RANGE_OPTIONS = {
     "24h": {"delta": timedelta(hours=24), "agg": "10m", "gap_s": 1800, "edge_label": "24h ago"},
     "7d": {"delta": timedelta(days=7), "agg": "1h", "gap_s": 7200, "edge_label": "7d ago"},
     "30d": {"delta": timedelta(days=30), "agg": "4h", "gap_s": 28800, "edge_label": "30d ago"},
+    # Everything since the site's first reading; the left edge is set from the data.
+    "all": {"delta": None, "agg": "1d", "gap_s": 3 * 86400, "edge_label": None},
 }
+# Before ESPHome, older pipelines (source=cloud/local/push, last write 2026-04-06) stored
+# co2/voc/nox as integers in this bucket. Any query whose range reaches those shards gets
+# the later float esphome series silently dropped, so "all" starts after them.
+ESPHOME_HISTORY_START = "2026-04-07T00:00:00Z"
 DEFAULT_RANGE = "7d"
 
 
@@ -271,6 +277,18 @@ def _compute_x_markers(
 
         def label(dt: datetime) -> str:
             return dt.astimezone(TZ_BOSTON).strftime("%a")
+    elif range_key == "all":
+        markers = []
+        d = t_start_local.date()
+        current = datetime(d.year, d.month, 1, tzinfo=TZ_BOSTON)
+        while current < t_end:
+            x_frac = (current.timestamp() - t_start_s) / t_span
+            # Skip ticks that would collide with the start-date edge label
+            if x_frac > 0.06:
+                markers.append({"x_frac": x_frac, "label": current.strftime("%b")})
+            month = current.month % 12 + 1
+            current = current.replace(year=current.year + (month == 1), month=month)
+        return markers
     else:  # 30d
         interval = timedelta(days=5)
         d = t_start_local.date() + timedelta(days=1)
@@ -294,14 +312,15 @@ def fetch_airq_data(range_key: str = DEFAULT_RANGE, site: str = DEFAULT_SITE) ->
     temp_offsets = sensor_set["temp_offsets"]
     opt = RANGE_OPTIONS[range_key]
     t_end = datetime.now(timezone.utc)
-    t_start = t_end - opt["delta"]
-    t_start_s = t_start.timestamp()
-    t_span = t_end.timestamp() - t_start_s
+    if opt["delta"] is None:
+        flux_range = ESPHOME_HISTORY_START
+        t_start = t_end - timedelta(days=30)  # replaced by the first reading below
+    else:
+        t_start = t_end - opt["delta"]
+        # Build Flux duration string from the timedelta
+        total_minutes = int(opt["delta"].total_seconds() / 60)
+        flux_range = f"-{total_minutes}m"
     gap_s = opt["gap_s"]
-
-    # Build Flux duration string from the timedelta
-    total_minutes = int(opt["delta"].total_seconds() / 60)
-    flux_range = f"-{total_minutes}m"
 
     field_filter = " or ".join(f'r._field == "{f}"' for f in ALL_FIELDS)
     location_filter = " or ".join(f'r.location == "{s["name"]}"' for s in sensors)
@@ -316,6 +335,13 @@ from(bucket: "airq")
   |> sort(columns: ["_time"])
 """
     rows = _query_influx(query)
+    if opt["delta"] is None and rows:
+        # aggregateWindow stamps each day at its end, so the first point is a day in
+        first = min(_parse_ts(r["_time"]) for r in rows if r.get("_time"))
+        t_start = datetime.fromtimestamp(first, timezone.utc) - timedelta(days=1)
+    t_start_s = t_start.timestamp()
+    t_span = t_end.timestamp() - t_start_s
+    edge_label = opt["edge_label"] or t_start.astimezone(TZ_BOSTON).strftime("%b %-d")
 
     # Organize: {field: {location: [(time_str, value)]}}
     raw: dict[str, dict[str, list]] = {}
@@ -478,7 +504,7 @@ from(bucket: "airq")
     return {
         "metrics": metrics,
         "x_markers": x_markers,
-        "edge_label": opt["edge_label"],
+        "edge_label": edge_label,
         "current_range": range_key,
         "site": site,
         "site_label": sensor_set["label"],
@@ -489,7 +515,7 @@ from(bucket: "airq")
 @router.get("/air-quality", response_class=HTMLResponse)
 async def air_quality(
     request: Request,
-    range: str = Query(default=DEFAULT_RANGE, pattern="^(1h|24h|7d|30d)$"),
+    range: str = Query(default=DEFAULT_RANGE, pattern="^(1h|24h|7d|30d|all)$"),
     site: str = Query(default=DEFAULT_SITE, pattern="^(home|cabin)$"),
     _user: str = Depends(require_auth),
 ):
