@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Fitness{% endblock %}
+{% block header %}Fitness{% endblock %}
+
+{% block content %}
+<div class="airq-top">
+    <a href="/" class="airq-back">← Dashboard</a>
+    <div class="airq-range-toggle">
+        {% for r in ranges %}
+        <a href="/fitness?range={{ r }}"
+           class="airq-range-btn{% if r == current_range %} active{% endif %}">{{ r }}</a>
+        {% endfor %}
+    </div>
+</div>
+
+{% if error %}
+<div class="error-message">{{ error }}</div>
+{% elif not sections %}
+<p class="fit-note">No Garmin data yet.</p>
+{% endif %}
+
+{% for section in sections %}
+<h2 class="fit-section">{{ section.title }}</h2>
+{% if section.note %}<p class="fit-note">{{ section.note }}</p>{% endif %}
+
+<div class="airq-grid">
+{% for metric in section.charts %}
+{% set metric_idx = loop.index ~ '-' ~ section.title|replace(' ', '') %}
+<div class="airq-metric">
+    <div class="airq-metric-header">
+        <span class="airq-metric-label">{{ metric.label }}</span>
+        {% if metric.unit %}<span class="airq-metric-unit">{{ metric.unit }}</span>{% endif %}
+    </div>
+    <div class="airq-current">
+        {% for s in metric.series %}
+        {% if s.latest_val %}
+        <span class="airq-reading"
+              title="{{ s.latest_day.strftime('%a %b %-d') if s.latest_day else '' }}"
+              style="color: {{ s.latest_tc or s.color }};{% if s.latest_bg %} background: {{ s.latest_bg }}; outline: 1.5px solid {{ s.latest_tc }}; border-radius: 3px; padding: 0.05em 0.3em;{% endif %}">
+            {%- if metric.multi %}<span class="airq-sublabel">{{ s.display }}</span> {% endif -%}
+            {{ s.latest_val }}
+        </span>
+        {% if s.flag and not metric.multi %}<span class="fit-flag" style="color: {{ s.latest_tc }}">{{ s.flag }}</span>{% endif %}
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    {% set cl = 46 %}
+    {% set cw = 522 %}
+    {% set cr = cl + cw %}
+    {% set ct = 8 %}
+    {% set ch = 90 %}
+    {% set cb = ct + ch %}
+
+    <svg viewBox="0 0 580 {{ cb + 22 }}" class="airq-chart">
+        <defs>
+            <clipPath id="clip-{{ metric_idx }}">
+                <rect x="{{ cl }}" y="{{ ct }}" width="{{ cw }}" height="{{ ch }}"/>
+            </clipPath>
+        </defs>
+
+        {# Fixed reference bands (sleep score, readiness) — behind everything #}
+        {% for band in metric.bands %}
+        <rect x="{{ cl }}" y="{{ ct + band.y_top_frac * ch }}"
+              width="{{ cw }}" height="{{ (band.y_bot_frac - band.y_top_frac) * ch }}"
+              fill="{{ band.color }}"/>
+        <text x="{{ cr - 4 }}" y="{{ ct + (band.y_top_frac + band.y_bot_frac) / 2 * ch + 4 }}"
+              font-size="10" text-anchor="end"
+              stroke="{{ band.color }}" stroke-width="3" paint-order="stroke"
+              fill="{{ band.text_color }}">{{ band.label }}</text>
+        {% endfor %}
+
+        {# Personal baseline (typical range) as a shaded ribbon #}
+        {% for poly in metric.band_polys %}
+        <polygon points="{% for xf, yf in poly %}{{ cl + xf * cw }},{{ ct + yf * ch }} {% endfor %}"
+                 fill="{{ metric.band_style.color }}" clip-path="url(#clip-{{ metric_idx }})"/>
+        {% endfor %}
+
+        {# Y-axis grid lines #}
+        {% for i in range(3) %}
+        {% set gy = ct + i * ch / 2 %}
+        <line x1="{{ cl }}" y1="{{ gy }}" x2="{{ cr }}" y2="{{ gy }}" stroke="#ebebeb" stroke-width="1"/>
+        <text x="{{ cl - 4 }}" y="{{ gy + 4 }}" font-size="11" fill="#bbb" text-anchor="end">{{ metric.y_labels[i] }}</text>
+        {% endfor %}
+
+        {# X-axis markers #}
+        {% for marker in x_markers %}
+        {% set mx = cl + marker.x_frac * cw %}
+        <line x1="{{ mx }}" y1="{{ ct }}" x2="{{ mx }}" y2="{{ cb }}" stroke="#ebebeb" stroke-width="1"/>
+        <text x="{{ mx }}" y="{{ cb + 16 }}" font-size="11" fill="#ccc" text-anchor="middle">{{ marker.label }}</text>
+        {% endfor %}
+
+        {# Series polylines — one <polyline> per continuous run; dots for isolated days #}
+        {% for s in metric.series %}
+        {% for segment in s.segments %}
+        {% if segment | length == 1 %}
+        <circle cx="{{ cl + segment[0][0] * cw }}"
+                cy="{{ ct + ch - (segment[0][1] - metric.min_val) / metric.val_range * ch }}"
+                r="2.5" fill="{{ s.color }}"
+                clip-path="url(#clip-{{ metric_idx }})"/>
+        {% else %}
+        <polyline
+            points="{% for xf, v in segment %}{{ cl + xf * cw }},{{ ct + ch - (v - metric.min_val) / metric.val_range * ch }} {% endfor %}"
+            fill="none"
+            stroke="{{ s.color }}"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+            clip-path="url(#clip-{{ metric_idx }})"/>
+        {% endif %}
+        {% endfor %}
+        {% endfor %}
+
+        {# X-axis edge labels #}
+        <text x="{{ cl }}" y="{{ cb + 16 }}" font-size="11" fill="#ddd" text-anchor="start">{{ edge_label }}</text>
+        <text x="{{ cr }}" y="{{ cb + 16 }}" font-size="11" fill="#ccc" text-anchor="end">today</text>
+    </svg>
+</div>
+{% endfor %}
+</div>
+{% endfor %}
+
+<style>
+.airq-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.airq-back {
+    color: #888;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+.airq-back:hover { color: #333; }
+
+.airq-range-toggle {
+    display: flex;
+    gap: 0.25rem;
+}
+.airq-range-btn {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.85rem;
+    color: #888;
+    text-decoration: none;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+.airq-range-btn:hover { color: #333; border-color: #aaa; }
+.airq-range-btn.active { color: #333; border-color: #888; font-weight: bold; }
+
+.fit-section {
+    margin: 2rem 0 0.25rem;
+}
+.fit-note {
+    font-size: 0.85rem;
+    color: #888;
+    margin: 0 0 1rem;
+}
+.fit-flag {
+    font-size: 0.8rem;
+    align-self: center;
+}
+
+.airq-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem 3rem;
+}
+@media (max-width: 700px) {
+    .airq-grid { grid-template-columns: 1fr; }
+}
+
+.airq-metric {
+    border-top: 1px solid #e8e8e8;
+    padding-top: 0.75rem;
+}
+
+.airq-metric-header { margin-bottom: 0.2rem; }
+.airq-metric-label {
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: #333;
+}
+.airq-metric-unit {
+    font-size: 0.8rem;
+    color: #aaa;
+    margin-left: 0.3rem;
+}
+
+.airq-current {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.25rem;
+    flex-wrap: wrap;
+}
+.airq-reading {
+    font-size: 1.3rem;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+}
+.airq-sublabel {
+    font-size: 0.7rem;
+    font-weight: normal;
+    color: #aaa;
+    vertical-align: middle;
+    letter-spacing: 0;
+}
+
+.airq-chart {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+</style>
+{% endblock %}

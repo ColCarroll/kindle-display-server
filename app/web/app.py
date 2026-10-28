@@ -10,7 +10,17 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import config
 from app.web import auth
-from app.web.routes import airq, birds, calendar, dashboard, portfolio, shoes, strava, weather
+from app.web.routes import (
+    airq,
+    birds,
+    calendar,
+    dashboard,
+    fitness,
+    portfolio,
+    shoes,
+    strava,
+    weather,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +60,7 @@ app.mount("/static", StaticFiles(directory="app/web/static"), name="static")
 app.include_router(dashboard.router)
 app.include_router(airq.router)
 app.include_router(birds.router)
+app.include_router(fitness.router)
 app.include_router(portfolio.router)
 app.include_router(weather.router)
 app.include_router(calendar.router)
