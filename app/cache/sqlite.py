@@ -1,5 +1,6 @@
 """SQLite-based cache backend."""
 
+import builtins
 import json
 import os
 import sqlite3
@@ -80,6 +81,16 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             shoe_strava_id TEXT,
             updated_at TEXT NOT NULL,
             synced_to_strava INTEGER NOT NULL DEFAULT 0
+        )
+    """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS day_tags (
+            day TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (day, tag)
         )
     """
     )
@@ -510,5 +521,39 @@ def get_run_shoes_for_activities(activity_ids: list[int]) -> dict[int, dict[str,
             else:
                 result[activity_id] = None
         return result
+    finally:
+        conn.close()
+
+
+def get_day_tags(start: str, end: str) -> dict[str, builtins.set[str]]:
+    """Tags (e.g. "sick", "drinking") per ISO day, for start..end inclusive."""
+    conn = _get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT day, tag FROM day_tags WHERE day BETWEEN ? AND ?", (start, end)
+        ).fetchall()
+        # this module defines its own set() (the cache setter), hence builtins.set
+        out: dict[str, builtins.set[str]] = {}
+        for row in rows:
+            out.setdefault(row["day"], builtins.set()).add(row["tag"])
+        return out
+    finally:
+        conn.close()
+
+
+def toggle_day_tag(day: str, tag: str) -> bool:
+    """Add the tag to the day if absent, remove it if present. Returns whether it is now set."""
+    conn = _get_connection()
+    try:
+        cur = conn.execute("DELETE FROM day_tags WHERE day = ? AND tag = ?", (day, tag))
+        if cur.rowcount:
+            conn.commit()
+            return False
+        conn.execute(
+            "INSERT INTO day_tags (day, tag, updated_at) VALUES (?, ?, ?)",
+            (day, tag, datetime.utcnow().isoformat()),
+        )
+        conn.commit()
+        return True
     finally:
         conn.close()

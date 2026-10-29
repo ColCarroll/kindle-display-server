@@ -5,8 +5,15 @@ from datetime import date, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from app.cache import sqlite as cache
 from app.web.auth import require_auth
 from app.web.routes import fitness
+
+
+@pytest.fixture(autouse=True)
+def tmp_cache_db(monkeypatch, tmp_path):
+    """Day tags live in the app's SQLite cache; never touch the real one in tests."""
+    monkeypatch.setattr(cache, "DB_PATH", str(tmp_path / "cache.db"))
 
 
 def _ts(day: date) -> str:
@@ -77,17 +84,16 @@ def test_resting_hr_flagged_when_outside_typical_range(fake_influx):
     assert rhr["band_polys"]
 
 
-def test_hrv_uses_garmins_balanced_range(fake_influx):
-    rows = (
-        _rows("hrv", [58, 60, 70])
-        + _rows("hrv_balanced_low", [47, 47, 47])
-        + _rows("hrv_balanced_high", [65, 65, 65])
-    )
-    fake_influx(rows)
-
+def test_hrv_flag_uses_the_same_2_sd_rule_as_the_other_vitals(fake_influx):
+    fake_influx(_rows("hrv", [55, 56] * 10 + [53]))  # sd ≈ 0.5: 53 is ~5 SD low
     hrv = _chart(fitness.fetch_fitness_data("30d"), "HRV")
+    assert hrv["series"][0]["flag"] == "Below typical"
 
-    assert hrv["series"][0]["flag"] == "Above typical"
+
+def test_one_sd_off_is_still_typical(fake_influx):
+    fake_influx(_rows("rhr", [44, 46] * 10 + [46.5]))  # mean 45, sd ≈ 1: +1.5 SD
+    rhr = _chart(fitness.fetch_fitness_data("30d"), "Resting heart rate")
+    assert rhr["series"][0]["flag"] == "Typical"
 
 
 def test_sleep_score_headline_uses_garmin_bands(fake_influx):
@@ -289,3 +295,107 @@ def test_vitals_partial_links_to_fitness(client, fake_influx):
 def test_vitals_partial_without_data(client, fake_influx):
     fake_influx([])
     assert "No Garmin vitals yet" in client.get("/partials/fitness-vitals").text
+
+
+# ── Strain, big days, day tags ──
+
+
+def test_strain_is_mean_signed_z_and_needs_all_four():
+    days = [date(2026, 9, 1) + timedelta(days=i) for i in range(21)]
+    steady = {d: 50.0 + (i % 2) for i, d in enumerate(days)}  # mean 50.5, sd ≈ 0.51
+    last = days[-1]
+    raw = {
+        "rhr": {**steady, last: 50.5 + 2 * 0.5121},  # +2 SD (worse)
+        "hrv": {**steady, last: 50.5 - 2 * 0.5121},  # −2 SD → +2 after sign flip (worse)
+        "respiration": {**steady, last: 50.5},  # 0
+        "skin_temp_c": {**steady, last: 50.5},  # 0
+    }
+
+    strain = fitness._strain(raw)
+
+    assert strain[last] == pytest.approx(1.0, abs=0.02)
+    del raw["skin_temp_c"][last]
+    assert last not in fitness._strain(raw)
+
+
+def test_big_day_is_double_the_trailing_average_or_a_race():
+    start = date(2026, 9, 1)
+    load = {start + timedelta(days=i): 100.0 for i in range(28)}  # avg 100
+    race_day = start + timedelta(days=30)
+    raw = {
+        "train_load": {
+            **load,
+            start + timedelta(days=28): 190.0,  # 1.9x: not big
+            start + timedelta(days=29): 260.0,  # 2.6x: big
+            race_day: 50.0,
+        },
+        "race": {race_day: 1.0},
+    }
+
+    big = fitness._big_days(raw)
+
+    assert start + timedelta(days=28) not in big
+    assert big[start + timedelta(days=29)] == 260.0
+    assert race_day in big
+
+
+def test_tagged_and_big_days_become_chart_markers(fake_influx):
+    today = _today()
+    cache.toggle_day_tag((today - timedelta(days=3)).isoformat(), "sick")
+    cache.toggle_day_tag((today - timedelta(days=2)).isoformat(), "drinking")
+    fake_influx(
+        _rows("rhr", [44, 45] * 10)
+        + _rows("steps", [9000] * 5)
+        + _rows("train_load", [50.0] * 27 + [400.0], end=today - timedelta(days=1))
+    )
+
+    data = fitness.fetch_fitness_data("30d")
+    rhr = _chart(data, "Resting heart rate")
+
+    assert [e["label"].split(": ")[1] for e in rhr["events"]["sick"]] == ["sick"]
+    assert len(rhr["events"]["drinking"]) == 1
+    assert rhr["events"]["big"][0]["label"].endswith("(load 400)")
+    assert _chart(data, "Steps")["events"] is None  # markers only on Health Status charts
+
+
+def test_toggle_day_tag_round_trip():
+    assert cache.toggle_day_tag("2026-09-08", "sick") is True
+    assert cache.get_day_tags("2026-09-01", "2026-09-30") == {"2026-09-08": {"sick"}}
+    assert cache.toggle_day_tag("2026-09-08", "sick") is False
+    assert cache.get_day_tags("2026-09-01", "2026-09-30") == {}
+
+
+def test_day_log_pages_back_and_marks_tags(fake_influx):
+    fake_influx([])
+    today = _today()
+    cache.toggle_day_tag((today - timedelta(days=20)).isoformat(), "drinking")
+
+    first = fitness.fetch_day_log()
+    older = fitness.fetch_day_log(date.fromisoformat(first["earlier"]))
+
+    assert first["days"][0]["iso"] == today.isoformat() and first["later"] is None
+    assert len(first["days"]) == fitness.LOG_DAYS
+    tagged = next(d for d in older["days"] if d["iso"] == (today - timedelta(days=20)).isoformat())
+    assert tagged["tags"] == {"drinking"}
+    assert older["later"] is not None
+
+
+def test_toggle_route_redraws_the_day(client, fake_influx):
+    fake_influx([])
+    day = (_today() - timedelta(days=5)).isoformat()
+
+    on = client.post(f"/partials/fitness-log/{day}/sick")
+    off = client.post(f"/partials/fitness-log/{day}/sick")
+
+    assert on.status_code == 200 and "fit-tag-sick on" in on.text and "is-sick" in on.text
+    assert "fit-tag-sick on" not in off.text
+    assert client.post(f"/partials/fitness-log/{day}/hungover").status_code == 400
+    future = (_today() + timedelta(days=1)).isoformat()
+    assert client.post(f"/partials/fitness-log/{future}/sick").status_code == 400
+
+
+def test_radar_shows_strain_in_the_middle(fake_influx):
+    fake_influx(_vitals_rows(40, last={"rhr": 52, "hrv": 40}))
+    strain = fitness.fetch_vitals_radar()["strain"]
+    assert strain["value"].startswith("+")
+    assert strain["color"] == fitness.VITAL_COLORS["Above typical"]

@@ -11,9 +11,10 @@ import statistics
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
+from app.cache import sqlite as cache
 from app.web.auth import require_auth
 from app.web.routes.airq import _parse_ts, _query_influx
 from app.web.templating import templates
@@ -35,6 +36,23 @@ DEFAULT_RANGE = "90d"
 # watch's personal baseline. Needs a handful of nights before it means anything.
 BASELINE_DAYS = 28
 BASELINE_MIN_NIGHTS = 7
+# "Typical" = within this many SDs of the trailing baseline. At ±1 SD each vital is outside
+# ~30% of nights by construction, so all five were typical only ~1 night in 4.
+BAND_SD = 2.0
+
+# Strain: mean of the four correlated recovery signals, each as a z-score against its
+# baseline and signed so that "worse" is positive. SpO2 is left out: it barely moves
+# with the others and is mostly sensor noise at sea level.
+STRAIN_SIGNS = {"rhr": 1, "hrv": -1, "respiration": 1, "skin_temp_c": 1}
+STRAIN_FLAG = 1.0  # ≈ top/bottom 5% of nights
+
+# A big training day: Garmin training load at least BIG_DAY_RATIO × the trailing
+# BASELINE_DAYS daily average (rest days count as 0), or an activity tagged as a race.
+BIG_DAY_RATIO = 2.0
+BIG_DAY_MIN_LOAD = 100
+
+DAY_TAGS = {"sick": "Sick", "drinking": "Drinking"}
+LOG_DAYS = 14
 
 MIN_SPAN_FRAC = 0.04
 
@@ -94,18 +112,33 @@ def _pace(miles):
 
 
 # Each section is a list of charts; each chart has one or more series.
-# baseline: "garmin_hrv" uses Garmin's own balanced range, "rolling" a trailing mean ± 1 SD.
+# baseline: "rolling" = trailing BASELINE_DAYS mean ± BAND_SD SD, used for the ribbon and flags.
+# events: draw sick / drinking / big-training-day markers on the chart.
 SECTIONS = [
     {
         "title": "Health Status",
-        "note": "Overnight readings; shaded band is your typical range.",
+        "note": "Overnight readings. Shaded band: ±2 SD of your previous 28 nights.",
+        "legend": True,
         "charts": [
+            {
+                "label": "Strain",
+                "unit": "resting HR↑ HRV↓ respiration↑ skin temp↑ · avg SD",
+                "decimals": 1,
+                "signed": True,
+                "events": True,
+                "series": [_series("strain", "Strain")],
+                "bands": [
+                    _b(STRAIN_FLAG, None, "#f7e9e9", "High", "#b2182b"),
+                    _b(-99, -STRAIN_FLAG, "#eaf1f8", "Low", "#2166ac"),
+                ],
+            },
             {
                 "label": "HRV",
                 "unit": "ms",
                 "decimals": 0,
                 "series": [_series("hrv", "Overnight HRV")],
-                "baseline": "garmin_hrv",
+                "baseline": "rolling",
+                "events": True,
             },
             {
                 "label": "Resting heart rate",
@@ -113,6 +146,7 @@ SECTIONS = [
                 "decimals": 0,
                 "series": [_series("rhr", "Resting HR")],
                 "baseline": "rolling",
+                "events": True,
             },
             {
                 "label": "Respiration",
@@ -120,6 +154,7 @@ SECTIONS = [
                 "decimals": 1,
                 "series": [_series("respiration", "Sleeping respiration")],
                 "baseline": "rolling",
+                "events": True,
             },
             {
                 "label": "Skin temp change",
@@ -128,6 +163,7 @@ SECTIONS = [
                 "signed": True,
                 "series": [_series("skin_temp_c", "Skin temp", transform=_c_delta_to_f)],
                 "baseline": "rolling",
+                "events": True,
             },
             {
                 "label": "Pulse ox",
@@ -135,6 +171,7 @@ SECTIONS = [
                 "decimals": 0,
                 "series": [_series("spo2", "Sleeping SpO₂")],
                 "baseline": "rolling",
+                "events": True,
                 "max_cap": 100,
             },
         ],
@@ -256,12 +293,13 @@ SECTIONS = [
     },
 ]
 
-HRV_BAND_FIELDS = ("hrv_balanced_low", "hrv_balanced_high")
+DERIVED_FIELDS = {"strain"}
+EXTRA_FIELDS = ["train_load", "race"]
 
 
 def _all_fields() -> list[str]:
     fields = [s["field"] for sec in SECTIONS for c in sec["charts"] for s in c["series"]]
-    return fields + list(HRV_BAND_FIELDS)
+    return [f for f in fields if f not in DERIVED_FIELDS] + EXTRA_FIELDS
 
 
 def _fmt_duration(seconds: float) -> str:
@@ -314,17 +352,75 @@ from(bucket: "garmin")
     return out
 
 
-def _rolling_band(values: dict[date, float]) -> dict[date, tuple[float, float]]:
-    """Trailing BASELINE_DAYS mean ± 1 SD for each day, excluding that day itself."""
-    band = {}
+def _baseline(values: dict[date, float]) -> dict[date, tuple[float, float]]:
+    """Trailing BASELINE_DAYS (mean, SD) for each day, excluding that day itself."""
+    out = {}
     days = sorted(values)
     for i, d in enumerate(days):
         window = [values[p] for p in days[:i] if (d - p).days <= BASELINE_DAYS]
-        if len(window) < BASELINE_MIN_NIGHTS:
-            continue
-        mu, sd = statistics.fmean(window), statistics.stdev(window)
-        band[d] = (mu - sd, mu + sd)
-    return band
+        if len(window) >= BASELINE_MIN_NIGHTS:
+            out[d] = (statistics.fmean(window), statistics.stdev(window))
+    return out
+
+
+def _rolling_band(values: dict[date, float], k: float = BAND_SD) -> dict[date, tuple[float, float]]:
+    """Trailing baseline mean ± k SD for each day."""
+    return {d: (mu - k * sd, mu + k * sd) for d, (mu, sd) in _baseline(values).items()}
+
+
+def _zscores(values: dict[date, float]) -> dict[date, float]:
+    """Each day's distance from its trailing baseline, in SDs."""
+    return {d: (values[d] - mu) / sd if sd else 0.0 for d, (mu, sd) in _baseline(values).items()}
+
+
+def _strain(raw: dict[str, dict[date, float]]) -> dict[date, float]:
+    """Mean signed z-score of the STRAIN_SIGNS vitals, for days that have all of them."""
+    zs = {f: _zscores(raw.get(f, {})) for f in STRAIN_SIGNS}
+    days = set.intersection(*(set(z) for z in zs.values()))
+    return {d: statistics.fmean(sign * zs[f][d] for f, sign in STRAIN_SIGNS.items()) for d in days}
+
+
+def _big_days(raw: dict[str, dict[date, float]]) -> dict[date, float]:
+    """{day: training load} for big training days (see BIG_DAY_RATIO) and races."""
+    load, race = raw.get("train_load", {}), raw.get("race", {})
+    out = {}
+    for d, v in load.items():
+        trailing = sum(load.get(d - timedelta(days=i), 0.0) for i in range(1, BASELINE_DAYS + 1))
+        avg = trailing / BASELINE_DAYS
+        if race.get(d) or (v >= BIG_DAY_MIN_LOAD and v >= BIG_DAY_RATIO * avg):
+            out[d] = v
+    return out
+
+
+def _day_tags(start: date, end: date) -> dict[date, set[str]]:
+    return {
+        date.fromisoformat(d): tags
+        for d, tags in cache.get_day_tags(start.isoformat(), end.isoformat()).items()
+    }
+
+
+def _events(raw: dict, start: date, end: date, x_of) -> dict:
+    """Day markers shared by the Health Status charts: tagged days and big training days."""
+    tags = _day_tags(start, end)
+    big = _big_days(raw)
+
+    def mark(d: date, label: str) -> dict:
+        return {"x": x_of(d), "w": x_of(d + timedelta(days=1)) - x_of(d), "label": label}
+
+    def when(d: date) -> str:
+        return d.strftime("%a %b %-d")
+
+    return {
+        "sick": [mark(d, f"{when(d)}: sick") for d, t in sorted(tags.items()) if "sick" in t],
+        "drinking": [
+            mark(d, f"{when(d)}: drinking") for d, t in sorted(tags.items()) if "drinking" in t
+        ],
+        "big": [
+            mark(d, f"{when(d)}: big training day (load {v:.0f})")
+            for d, v in sorted(big.items())
+            if start <= d < end
+        ],
+    }
 
 
 def _trailing_mean(values: dict[date, float], days: int) -> dict[date, float]:
@@ -404,7 +500,9 @@ def _latest_status(chart: dict, latest: tuple[date, float] | None, band) -> dict
     return {"bg": None, "tc": None, "flag": None}
 
 
-def _build_chart(chart: dict, raw: dict, start: date, end: date, opt: dict, x_of) -> dict | None:
+def _build_chart(
+    chart: dict, raw: dict, start: date, end: date, opt: dict, x_of, events: dict | None = None
+) -> dict | None:
     bucket_days = opt["bucket_days"]
     max_gap = 2 if bucket_days == 1 else bucket_days * 2
 
@@ -420,10 +518,7 @@ def _build_chart(chart: dict, raw: dict, start: date, end: date, opt: dict, x_of
 
         # Baseline band (only ever on single-series Health Status charts)
         band: dict[date, tuple[float, float]] = {}
-        if chart.get("baseline") == "garmin_hrv":
-            lows, highs = raw.get(HRV_BAND_FIELDS[0], {}), raw.get(HRV_BAND_FIELDS[1], {})
-            band = {d: (lows[d], highs[d]) for d in lows if d in highs}
-        elif chart.get("baseline") == "rolling":
+        if chart.get("baseline") == "rolling":
             band = _rolling_band(values)
         if band:
             headline_band = band
@@ -510,6 +605,7 @@ def _build_chart(chart: dict, raw: dict, start: date, end: date, opt: dict, x_of
         "band_style": NORMAL_BAND,
         "multi": len(series_out) > 1,
         "has_baseline": headline_band is not None,
+        "events": events if chart.get("events") else None,
     }
 
 
@@ -524,13 +620,24 @@ def fetch_fitness_data(range_key: str = DEFAULT_RANGE) -> dict:
         return (d - start).days / span
 
     raw = _fetch_daily(opt["days"])
+    raw["strain"] = _strain(raw)
+    events = _events(raw, start, end, x_of)
     sections = []
     for sec in SECTIONS:
         charts = [
-            c for c in (_build_chart(ch, raw, start, end, opt, x_of) for ch in sec["charts"]) if c
+            c
+            for c in (_build_chart(ch, raw, start, end, opt, x_of, events) for ch in sec["charts"])
+            if c
         ]
         if charts:
-            sections.append({"title": sec["title"], "note": sec.get("note"), "charts": charts})
+            sections.append(
+                {
+                    "title": sec["title"],
+                    "note": sec.get("note"),
+                    "legend": sec.get("legend", False),
+                    "charts": charts,
+                }
+            )
 
     return {
         "sections": sections,
@@ -567,13 +674,13 @@ async def fitness(
 # Front-page vitals radar
 # ---------------------------------------------------------------------------
 
-# The Health Status charts, in radar order (clockwise from the top).
-VITALS = SECTIONS[0]["charts"]
+# The five vitals (Health Status charts with a baseline), clockwise from the top.
+VITALS = [c for c in SECTIONS[0]["charts"] if c.get("baseline")]
 RADAR_NIGHTS = 7
-# Each axis plots how far a night sits from your typical range, in half-band-widths:
-# 0 = middle of typical, ±1 = edge of the shaded ring. Clamped so one wild night
-# doesn't flatten everything else.
-RADAR_Z_MAX = 2.5
+# Each axis plots a night's z-score against that vital's trailing baseline: 0 = its
+# average, ±BAND_SD = edge of the shaded ring. Clamped so one wild night doesn't
+# flatten everything else.
+RADAR_Z_MAX = 3.0
 RADAR_R = 78
 RADAR_W, RADAR_H = 270, 220
 RADAR_CX, RADAR_CY = RADAR_W / 2, 112
@@ -601,6 +708,18 @@ VITAL_ICONS = {
 }
 
 
+def _strain_display(strain: float | None) -> dict | None:
+    if strain is None:
+        return None
+    if strain >= STRAIN_FLAG:
+        color = VITAL_COLORS["Above typical"]
+    elif strain <= -STRAIN_FLAG:
+        color = VITAL_COLORS["Below typical"]
+    else:
+        color = VITAL_COLORS["Typical"]
+    return {"value": f"{strain:+.1f}", "color": color}
+
+
 def _radar_r(z: float) -> float:
     z = max(-RADAR_Z_MAX, min(RADAR_Z_MAX, z))
     return (z + RADAR_Z_MAX) / (2 * RADAR_Z_MAX) * RADAR_R
@@ -621,26 +740,14 @@ def fetch_vitals_radar() -> dict:
     """Last RADAR_NIGHTS nights of the five vitals, normalized to each one's typical range."""
     raw = _fetch_daily(RADAR_NIGHTS)
 
-    per_axis = []  # [(chart, {day: value}, {day: (lo, hi)})]
+    per_axis = []  # [(chart, {day: value}, {day: (lo, hi)}, {day: z})]
     for chart in VITALS:
         s = chart["series"][0]
         transform = s["transform"] or (lambda v: v)
         values = {d: transform(v) for d, v in raw.get(s["field"], {}).items()}
-        if chart["baseline"] == "garmin_hrv":
-            lows, highs = raw.get(HRV_BAND_FIELDS[0], {}), raw.get(HRV_BAND_FIELDS[1], {})
-            band = {d: (lows[d], highs[d]) for d in lows if d in highs}
-        else:
-            band = _rolling_band(values)
-        per_axis.append((chart, values, band))
+        per_axis.append((chart, values, _rolling_band(values), _zscores(values)))
 
-    def z(values, band, day) -> float | None:
-        if day not in values or day not in band:
-            return None
-        lo, hi = band[day]
-        half = (hi - lo) / 2 or 1.0
-        return (values[day] - (lo + hi) / 2) / half
-
-    nights = sorted({d for _, values, _ in per_axis for d in values}, reverse=True)
+    nights = sorted({d for _, values, _, _ in per_axis for d in values}, reverse=True)
     nights = nights[:RADAR_NIGHTS]
     if not nights:
         return {"has_data": False}
@@ -648,7 +755,7 @@ def fetch_vitals_radar() -> dict:
     # Oldest first so last night draws on top. A night needs every axis to make a polygon.
     polys = []
     for age, day in sorted(enumerate(nights), key=lambda t: -t[0]):
-        zs = [z(values, band, day) for _, values, band in per_axis]
+        zs = [z.get(day) for _, _, _, z in per_axis]
         if any(v is None for v in zs):
             continue
         pts = [_radar_xy(i, _radar_r(v)) for i, v in enumerate(zs) if v is not None]
@@ -665,7 +772,7 @@ def fetch_vitals_radar() -> dict:
 
     last = nights[0]
     axes = []
-    for i, (chart, values, band) in enumerate(per_axis):
+    for i, (chart, values, band, _) in enumerate(per_axis):
         field = chart["series"][0]["field"]
         latest = (last, values[last]) if last in values else None
         status = _latest_status(chart, latest, band)
@@ -696,13 +803,15 @@ def fetch_vitals_radar() -> dict:
             }
         )
 
+    strain = _strain(raw).get(last)
     return {
         "has_data": True,
         "polys": polys,
         "axes": axes,
         "center": (RADAR_CX, RADAR_CY),
-        "typical_outer": _ring(1),
-        "typical_inner": _ring(-1),
+        "strain": _strain_display(strain),
+        "typical_outer": _ring(BAND_SD),
+        "typical_inner": _ring(-BAND_SD),
         "mid_ring": _ring(0),
         "outer_ring": _ring(RADAR_Z_MAX),
         "last_night": last,
@@ -721,3 +830,63 @@ async def fitness_vitals_partial(request: Request, _user: str = Depends(require_
         logger.error(f"Failed to fetch vitals: {e}")
         data = {"has_data": False, "error": str(e)}
     return templates.TemplateResponse(request, "partials/fitness_vitals.html", data)
+
+
+# ---------------------------------------------------------------------------
+# Day log: tag sick / drinking days after the fact
+# ---------------------------------------------------------------------------
+
+
+def _log_day(d: date, strain: dict, big: dict, tags: dict) -> dict:
+    return {
+        "iso": d.isoformat(),
+        "weekday": d.strftime("%a"),
+        "label": f"{d.strftime('%b')} {d.day}",
+        "strain": _strain_display(strain.get(d)),
+        "big_load": big.get(d),
+        "tags": tags.get(d, set()),
+    }
+
+
+def fetch_day_log(end: date | None = None) -> dict:
+    """LOG_DAYS days ending at `end` (default today): strain, big days and tags for each."""
+    today = datetime.now(TZ_BOSTON).date()
+    end = min(end or today, today)
+    start = end - timedelta(days=LOG_DAYS - 1)
+    raw = _fetch_daily((today - start).days + 1)
+    strain, big, tags = _strain(raw), _big_days(raw), _day_tags(start, end)
+    days = [_log_day(start + timedelta(days=i), strain, big, tags) for i in range(LOG_DAYS)]
+    return {
+        "days": list(reversed(days)),  # newest first
+        "tags": DAY_TAGS,
+        "earlier": (start - timedelta(days=1)).isoformat(),
+        "later": (end + timedelta(days=LOG_DAYS)).isoformat() if end < today else None,
+    }
+
+
+@router.get("/partials/fitness-log", response_class=HTMLResponse)
+async def fitness_log_partial(
+    request: Request,
+    end: date | None = None,
+    _user: str = Depends(require_auth),
+):
+    """Two weeks of days with sick/drinking toggles; `end` pages back for catching up."""
+    try:
+        data = await asyncio.to_thread(fetch_day_log, end)
+    except Exception as e:
+        logger.error(f"Failed to fetch day log: {e}")
+        data = {"days": [], "tags": DAY_TAGS, "error": str(e)}
+    return templates.TemplateResponse(request, "partials/fitness_log.html", data)
+
+
+@router.post("/partials/fitness-log/{day}/{tag}", response_class=HTMLResponse)
+async def toggle_day_tag(request: Request, day: date, tag: str, _user: str = Depends(require_auth)):
+    """Flip one tag on one day and redraw that day's cell."""
+    if tag not in DAY_TAGS or day > datetime.now(TZ_BOSTON).date():
+        raise HTTPException(status_code=400, detail="unknown tag or future day")
+    await asyncio.to_thread(cache.toggle_day_tag, day.isoformat(), tag)
+    log = await asyncio.to_thread(fetch_day_log, day + timedelta(days=LOG_DAYS - 1))
+    cell = next(d for d in log["days"] if d["iso"] == day.isoformat())
+    return templates.TemplateResponse(
+        request, "partials/fitness_log_day.html", {"day": cell, "tags": DAY_TAGS}
+    )

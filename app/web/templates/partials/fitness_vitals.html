@@ -44,6 +44,15 @@
         <circle cx="{{ x }}" cy="{{ y }}" r="2.5" fill="#111"/>
         {% endfor %}
         {% endfor %}
+        {# Strain in the middle: one number for the whole night #}
+        {% if strain %}
+        <g>
+            <title>Strain: average of resting HR, −HRV, respiration and skin temp, in SDs from your baseline</title>
+            <text x="{{ center[0] }}" y="{{ center[1] + 5 }}" text-anchor="middle" font-size="17" font-weight="bold"
+                  fill="{{ strain.color }}" stroke="#fffff8" stroke-width="4" paint-order="stroke"
+                  style="font-variant-numeric: tabular-nums">{{ strain.value }}</text>
+        </g>
+        {% endif %}
     </svg>
 </a>
 {% endif %}

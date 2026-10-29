@@ -20,9 +20,21 @@
 <p class="fit-note">No Garmin data yet.</p>
 {% endif %}
 
+<div hx-get="/partials/fitness-log" hx-trigger="load" hx-swap="outerHTML">
+    <span class="loading"></span>
+</div>
+
 {% for section in sections %}
 <h2 class="fit-section">{{ section.title }}</h2>
-{% if section.note %}<p class="fit-note">{{ section.note }}</p>{% endif %}
+{% if section.note %}<p class="fit-note">{{ section.note }}
+    {% if section.legend %}
+    <span class="fit-legend">
+        <span class="fit-legend-sick"></span> sick
+        <svg width="8" height="8" aria-hidden="true"><circle cx="4" cy="4" r="3" fill="#7b3294"/></svg> drinking
+        <svg width="9" height="8" aria-hidden="true"><polygon points="4.5,0 9,8 0,8" fill="#333"/></svg> big training day
+    </span>
+    {% endif %}
+</p>{% endif %}
 
 <div class="airq-grid">
 {% for metric in section.charts %}
@@ -71,6 +83,14 @@
               fill="{{ band.text_color }}">{{ band.label }}</text>
         {% endfor %}
 
+        {# Sick days: a soft column behind everything else #}
+        {% if metric.events %}
+        {% for e in metric.events.sick %}
+        <rect x="{{ cl + e.x * cw }}" y="{{ ct }}" width="{{ [e.w * cw, 2]|max }}" height="{{ ch }}"
+              fill="#f3dede" clip-path="url(#clip-{{ metric_idx }})"><title>{{ e.label }}</title></rect>
+        {% endfor %}
+        {% endif %}
+
         {# Personal baseline (typical range) as a shaded ribbon #}
         {% for poly in metric.band_polys %}
         <polygon points="{% for xf, yf in poly %}{{ cl + xf * cw }},{{ ct + yf * ch }} {% endfor %}"
@@ -111,6 +131,17 @@
         {% endif %}
         {% endfor %}
         {% endfor %}
+
+        {# Day markers along the bottom edge: drinking dots, big-training-day triangles #}
+        {% if metric.events %}
+        {% for e in metric.events.drinking %}
+        <circle cx="{{ cl + (e.x + e.w / 2) * cw }}" cy="{{ cb - 4 }}" r="3" fill="#7b3294"><title>{{ e.label }}</title></circle>
+        {% endfor %}
+        {% for e in metric.events.big %}
+        {% set ex = cl + (e.x + e.w / 2) * cw %}
+        <polygon points="{{ ex }},{{ cb - 9 }} {{ ex + 4 }},{{ cb - 1 }} {{ ex - 4 }},{{ cb - 1 }}" fill="#333"><title>{{ e.label }}</title></polygon>
+        {% endfor %}
+        {% endif %}
 
         {# X-axis edge labels #}
         <text x="{{ cl }}" y="{{ cb + 16 }}" font-size="11" fill="#ddd" text-anchor="start">{{ edge_label }}</text>
@@ -160,6 +191,46 @@
     color: #888;
     margin: 0 0 1rem;
 }
+.fit-legend { white-space: nowrap; margin-left: 0.5rem; }
+.fit-legend svg { vertical-align: middle; margin-left: 0.5rem; }
+.fit-legend-sick {
+    display: inline-block; width: 10px; height: 10px; background: #f3dede;
+    vertical-align: middle; margin-left: 0.5rem;
+}
+
+.fit-log-header {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+}
+.fit-log-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.4rem;
+}
+@media (max-width: 700px) {
+    .fit-log-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.fit-log-day {
+    border: 1px solid #e8e8e8;
+    border-radius: 4px;
+    padding: 0.35rem 0.4rem;
+    font-size: 0.8rem;
+}
+.fit-log-day.is-sick { background: #f3dede; }
+.fit-log-date { color: #666; white-space: nowrap; }
+.fit-log-weekday { color: #999; }
+.fit-log-big { color: #333; margin-left: 0.15rem; }
+.fit-log-strain { font-size: 1.1rem; font-variant-numeric: tabular-nums; margin: 0.1rem 0; }
+.fit-log-tags { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.fit-tag {
+    font: inherit; font-size: 0.72rem;
+    padding: 0.05rem 0.35rem;
+    border: 1px solid #ddd; border-radius: 3px;
+    background: transparent; color: #999; cursor: pointer;
+}
+.fit-tag:hover { border-color: #aaa; color: #333; }
+.fit-tag-sick.on { background: #b2182b; border-color: #b2182b; color: #fff; }
+.fit-tag-drinking.on { background: #7b3294; border-color: #7b3294; color: #fff; }
+
 .fit-flag {
     font-size: 0.8rem;
     align-self: center;

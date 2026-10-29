@@ -1,0 +1,25 @@
+<section id="fitness-log">
+<div class="fit-log-header">
+    <h2 class="fit-section">Log</h2>
+    {% if days %}
+    <div class="airq-range-toggle">
+        <a class="airq-range-btn" href="#"
+           hx-get="/partials/fitness-log?end={{ earlier }}" hx-target="#fitness-log" hx-swap="outerHTML">‹ earlier</a>
+        {% if later %}
+        <a class="airq-range-btn" href="#"
+           hx-get="/partials/fitness-log?end={{ later }}" hx-target="#fitness-log" hx-swap="outerHTML">later ›</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% if error %}
+<div class="error-message">{{ error }}</div>
+{% else %}
+<p class="fit-note">Tap to mark days you were sick or drinking; ▲ marks big training days.</p>
+<div class="fit-log-grid">
+    {% for day in days %}
+    {% include "partials/fitness_log_day.html" %}
+    {% endfor %}
+</div>
+{% endif %}
+</section>
