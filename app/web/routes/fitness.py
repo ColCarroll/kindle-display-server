@@ -51,8 +51,7 @@ STRAIN_FLAG = 1.0  # ≈ top/bottom 5% of nights
 BIG_DAY_RATIO = 2.0
 BIG_DAY_MIN_LOAD = 100
 
-DAY_TAGS = {"sick": "Sick", "drinking": "Drinking"}
-LOG_DAYS = 14
+SICK = "sick"  # day tag, set from the front-page week strip
 
 MIN_SPAN_FRAC = 0.04
 
@@ -113,7 +112,7 @@ def _pace(miles):
 
 # Each section is a list of charts; each chart has one or more series.
 # baseline: "rolling" = trailing BASELINE_DAYS mean ± BAND_SD SD, used for the ribbon and flags.
-# events: draw sick / drinking / big-training-day markers on the chart.
+# events: draw sick-day and big-training-day markers on the chart.
 SECTIONS = [
     {
         "title": "Health Status",
@@ -411,10 +410,7 @@ def _events(raw: dict, start: date, end: date, x_of) -> dict:
         return d.strftime("%a %b %-d")
 
     return {
-        "sick": [mark(d, f"{when(d)}: sick") for d, t in sorted(tags.items()) if "sick" in t],
-        "drinking": [
-            mark(d, f"{when(d)}: drinking") for d, t in sorted(tags.items()) if "drinking" in t
-        ],
+        "sick": [mark(d, f"{when(d)}: sick") for d, t in sorted(tags.items()) if SICK in t],
         "big": [
             mark(d, f"{when(d)}: big training day (load {v:.0f})")
             for d, v in sorted(big.items())
@@ -803,9 +799,11 @@ def fetch_vitals_radar() -> dict:
             }
         )
 
-    strain = _strain(raw).get(last)
+    strain_by_day = _strain(raw)
+    strain = strain_by_day.get(last)
     return {
         "has_data": True,
+        "week": _week(strain_by_day),
         "polys": polys,
         "axes": axes,
         "center": (RADAR_CX, RADAR_CY),
@@ -833,60 +831,48 @@ async def fitness_vitals_partial(request: Request, _user: str = Depends(require_
 
 
 # ---------------------------------------------------------------------------
-# Day log: tag sick / drinking days after the fact
+# Week strip under the radar: tap a night to mark it sick
 # ---------------------------------------------------------------------------
 
 
-def _log_day(d: date, strain: dict, big: dict, tags: dict) -> dict:
+def _week_days(today: date) -> list[date]:
+    """Mon..Sun like the training calendar: each weekday's most recent date, so days
+    not yet reached this week show last week's (still taggable for a full week)."""
+    monday = today - timedelta(days=today.weekday())
+    return [
+        d if d <= today else d - timedelta(days=7)
+        for d in (monday + timedelta(days=i) for i in range(7))
+    ]
+
+
+def _week_cell(d: date, today: date, strain: dict[date, float], tags: dict[date, set[str]]) -> dict:
+    display = _strain_display(strain.get(d))
+    sick = SICK in tags.get(d, set())
+    title = d.strftime("%a %b %-d") + (f" · strain {display['value']}" if display else "")
     return {
         "iso": d.isoformat(),
         "weekday": d.strftime("%a"),
-        "label": f"{d.strftime('%b')} {d.day}",
-        "strain": _strain_display(strain.get(d)),
-        "big_load": big.get(d),
-        "tags": tags.get(d, set()),
+        "strain": display,
+        "sick": sick,
+        "today": d == today,
+        "last_week": d < today - timedelta(days=today.weekday()),
+        "title": title + (" · sick (tap to clear)" if sick else " · tap to mark sick"),
     }
 
 
-def fetch_day_log(end: date | None = None) -> dict:
-    """LOG_DAYS days ending at `end` (default today): strain, big days and tags for each."""
+def _week(strain: dict[date, float]) -> list[dict]:
     today = datetime.now(TZ_BOSTON).date()
-    end = min(end or today, today)
-    start = end - timedelta(days=LOG_DAYS - 1)
-    raw = _fetch_daily((today - start).days + 1)
-    strain, big, tags = _strain(raw), _big_days(raw), _day_tags(start, end)
-    days = [_log_day(start + timedelta(days=i), strain, big, tags) for i in range(LOG_DAYS)]
-    return {
-        "days": list(reversed(days)),  # newest first
-        "tags": DAY_TAGS,
-        "earlier": (start - timedelta(days=1)).isoformat(),
-        "later": (end + timedelta(days=LOG_DAYS)).isoformat() if end < today else None,
-    }
+    tags = _day_tags(today - timedelta(days=6), today)
+    return [_week_cell(d, today, strain, tags) for d in _week_days(today)]
 
 
-@router.get("/partials/fitness-log", response_class=HTMLResponse)
-async def fitness_log_partial(
-    request: Request,
-    end: date | None = None,
-    _user: str = Depends(require_auth),
-):
-    """Two weeks of days with sick/drinking toggles; `end` pages back for catching up."""
-    try:
-        data = await asyncio.to_thread(fetch_day_log, end)
-    except Exception as e:
-        logger.error(f"Failed to fetch day log: {e}")
-        data = {"days": [], "tags": DAY_TAGS, "error": str(e)}
-    return templates.TemplateResponse(request, "partials/fitness_log.html", data)
-
-
-@router.post("/partials/fitness-log/{day}/{tag}", response_class=HTMLResponse)
-async def toggle_day_tag(request: Request, day: date, tag: str, _user: str = Depends(require_auth)):
-    """Flip one tag on one day and redraw that day's cell."""
-    if tag not in DAY_TAGS or day > datetime.now(TZ_BOSTON).date():
-        raise HTTPException(status_code=400, detail="unknown tag or future day")
-    await asyncio.to_thread(cache.toggle_day_tag, day.isoformat(), tag)
-    log = await asyncio.to_thread(fetch_day_log, day + timedelta(days=LOG_DAYS - 1))
-    cell = next(d for d in log["days"] if d["iso"] == day.isoformat())
-    return templates.TemplateResponse(
-        request, "partials/fitness_log_day.html", {"day": cell, "tags": DAY_TAGS}
-    )
+@router.post("/partials/fitness-vitals/sick/{day}", response_class=HTMLResponse)
+async def toggle_sick(request: Request, day: date, _user: str = Depends(require_auth)):
+    """Flip the sick tag for one of the last seven nights and redraw its cell."""
+    today = datetime.now(TZ_BOSTON).date()
+    if not today - timedelta(days=6) <= day <= today:
+        raise HTTPException(status_code=400, detail="only the last seven days can be tagged")
+    await asyncio.to_thread(cache.toggle_day_tag, day.isoformat(), SICK)
+    raw = await asyncio.to_thread(_fetch_daily, RADAR_NIGHTS)
+    cell = _week_cell(day, today, _strain(raw), _day_tags(day, day))
+    return templates.TemplateResponse(request, "partials/fitness_week_day.html", {"day": cell})

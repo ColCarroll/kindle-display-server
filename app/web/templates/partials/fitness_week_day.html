@@ -1,0 +1,9 @@
+<button type="button" id="week-{{ day.iso }}"
+        class="vitals-day{% if day.sick %} sick{% endif %}{% if day.today %} today{% endif %}{% if day.last_week %} last-week{% endif %}"
+        hx-post="/partials/fitness-vitals/sick/{{ day.iso }}"
+        hx-target="this" hx-swap="outerHTML"
+        aria-pressed="{{ 'true' if day.sick else 'false' }}"
+        title="{{ day.title }}">
+    <span class="vitals-day-name">{{ day.weekday }}</span>
+    <span class="vitals-day-strain"{% if day.strain %} style="color: {{ day.strain.color }}"{% endif %}>{{ day.strain.value if day.strain else "–" }}</span>
+</button>

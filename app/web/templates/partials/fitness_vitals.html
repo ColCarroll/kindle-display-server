@@ -3,7 +3,8 @@
 {% elif not has_data %}
 <p style="color:#aaa;font-size:0.9rem;font-style:italic;">No Garmin vitals yet.</p>
 {% else %}
-<a href="/fitness" class="vitals-card">
+<div class="vitals-card">
+<a href="/fitness" class="vitals-link">
     <div class="strava-stats" style="margin-bottom:0.25rem;">
         <div class="strava-stat">
             <div class="strava-stat-value"><strong>Vitals</strong></div>
@@ -55,10 +56,38 @@
         {% endif %}
     </svg>
 </a>
+
+{# Strain per night, Mon..Sun like the training calendar; tap to mark a night sick #}
+<div class="vitals-week">
+    {% for day in week %}
+    {% include "partials/fitness_week_day.html" %}
+    {% endfor %}
+</div>
+</div>
 {% endif %}
 
 <style>
-.vitals-card { display: block; color: inherit; text-decoration: none; }
-.vitals-card:hover .strava-stat-value strong { text-decoration: underline; }
+.vitals-link { display: block; color: inherit; text-decoration: none; }
+.vitals-link:hover .strava-stat-value strong { text-decoration: underline; }
+.vitals-week {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 3px;
+    width: 270px;
+    max-width: 100%;
+}
+.vitals-day {
+    font: inherit;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 0.15rem 0;
+    border: 1px solid transparent; border-radius: 3px;
+    background: transparent; cursor: pointer;
+}
+.vitals-day:hover { border-color: #ddd; }
+.vitals-day.sick { background: #f3dede; }
+.vitals-day.last-week { opacity: 0.55; }
+.vitals-day-name { font-size: 0.7rem; color: #999; }
+.vitals-day.today .vitals-day-name { color: #333; font-weight: bold; }
+.vitals-day-strain { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .vitals-radar { width: 270px; max-width: 100%; height: auto; display: block; }
 </style>

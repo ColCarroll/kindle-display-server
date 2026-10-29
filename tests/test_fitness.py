@@ -342,7 +342,6 @@ def test_big_day_is_double_the_trailing_average_or_a_race():
 def test_tagged_and_big_days_become_chart_markers(fake_influx):
     today = _today()
     cache.toggle_day_tag((today - timedelta(days=3)).isoformat(), "sick")
-    cache.toggle_day_tag((today - timedelta(days=2)).isoformat(), "drinking")
     fake_influx(
         _rows("rhr", [44, 45] * 10)
         + _rows("steps", [9000] * 5)
@@ -353,7 +352,6 @@ def test_tagged_and_big_days_become_chart_markers(fake_influx):
     rhr = _chart(data, "Resting heart rate")
 
     assert [e["label"].split(": ")[1] for e in rhr["events"]["sick"]] == ["sick"]
-    assert len(rhr["events"]["drinking"]) == 1
     assert rhr["events"]["big"][0]["label"].endswith("(load 400)")
     assert _chart(data, "Steps")["events"] is None  # markers only on Health Status charts
 
@@ -365,37 +363,50 @@ def test_toggle_day_tag_round_trip():
     assert cache.get_day_tags("2026-09-01", "2026-09-30") == {}
 
 
-def test_day_log_pages_back_and_marks_tags(fake_influx):
-    fake_influx([])
-    today = _today()
-    cache.toggle_day_tag((today - timedelta(days=20)).isoformat(), "drinking")
-
-    first = fitness.fetch_day_log()
-    older = fitness.fetch_day_log(date.fromisoformat(first["earlier"]))
-
-    assert first["days"][0]["iso"] == today.isoformat() and first["later"] is None
-    assert len(first["days"]) == fitness.LOG_DAYS
-    tagged = next(d for d in older["days"] if d["iso"] == (today - timedelta(days=20)).isoformat())
-    assert tagged["tags"] == {"drinking"}
-    assert older["later"] is not None
-
-
-def test_toggle_route_redraws_the_day(client, fake_influx):
-    fake_influx([])
-    day = (_today() - timedelta(days=5)).isoformat()
-
-    on = client.post(f"/partials/fitness-log/{day}/sick")
-    off = client.post(f"/partials/fitness-log/{day}/sick")
-
-    assert on.status_code == 200 and "fit-tag-sick on" in on.text and "is-sick" in on.text
-    assert "fit-tag-sick on" not in off.text
-    assert client.post(f"/partials/fitness-log/{day}/hungover").status_code == 400
-    future = (_today() + timedelta(days=1)).isoformat()
-    assert client.post(f"/partials/fitness-log/{future}/sick").status_code == 400
-
-
 def test_radar_shows_strain_in_the_middle(fake_influx):
     fake_influx(_vitals_rows(40, last={"rhr": 52, "hrv": 40}))
     strain = fitness.fetch_vitals_radar()["strain"]
     assert strain["value"].startswith("+")
     assert strain["color"] == fitness.VITAL_COLORS["Above typical"]
+
+
+def test_week_is_monday_to_sunday_with_last_weeks_days_for_the_future():
+    thursday = date(2026, 10, 29)
+
+    week = fitness._week_days(thursday)
+
+    assert [d.strftime("%a") for d in week] == ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    assert week[0] == date(2026, 10, 26) and week[3] == thursday
+    assert week[4] == date(2026, 10, 23)  # Friday: last week's, still within 7 days
+    assert all(thursday - timedelta(days=6) <= d <= thursday for d in week)
+
+
+def test_week_strip_shows_strain_and_sick_days(fake_influx):
+    today = _today()
+    cache.toggle_day_tag(today.isoformat(), "sick")
+    fake_influx(_vitals_rows(40, last={"rhr": 52, "hrv": 40}))
+
+    week = {d["iso"]: d for d in fitness.fetch_vitals_radar()["week"]}
+
+    cell = week[today.isoformat()]
+    assert cell["today"] and cell["sick"] and cell["strain"]["value"].startswith("+")
+    assert sum(d["sick"] for d in week.values()) == 1
+
+
+def test_tapping_a_day_toggles_sick(client, fake_influx):
+    fake_influx([])
+    day = (_today() - timedelta(days=2)).isoformat()
+
+    on = client.post(f"/partials/fitness-vitals/sick/{day}")
+    off = client.post(f"/partials/fitness-vitals/sick/{day}")
+
+    assert on.status_code == 200 and "vitals-day sick" in on.text
+    assert 'aria-pressed="true"' in on.text and 'aria-pressed="false"' in off.text
+    assert cache.get_day_tags(day, day) == {}
+
+
+def test_only_the_last_seven_days_can_be_tagged(client):
+    old = (_today() - timedelta(days=7)).isoformat()
+    future = (_today() + timedelta(days=1)).isoformat()
+    assert client.post(f"/partials/fitness-vitals/sick/{old}").status_code == 400
+    assert client.post(f"/partials/fitness-vitals/sick/{future}").status_code == 400
