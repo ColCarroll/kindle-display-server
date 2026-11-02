@@ -18,26 +18,48 @@
     <strong>{{ trend.detections.today }}</strong> detections
 </p>
 
+{% set g = trend.geom %}
 <div class="birds-trends">
-    {% for key, title in [("detections", "Detections / day"), ("species", "Species / day")] %}
+    {% for key, title, noun in [("detections", "Detections so far", "days"), ("species", "Species so far", "days")] %}
     {% set t = trend[key] %}
     <div class="birds-trend">
         <div class="birds-trend-label">{{ title }}</div>
-        <div class="birds-trend-row">
-            <svg viewBox="0 0 100 30" preserveAspectRatio="none" class="birds-spark"
-                 role="img" aria-label="{{ title }} over 30 days">
-                <line x1="0" y1="29" x2="100" y2="29" class="birds-spark-base"
-                      vector-effect="non-scaling-stroke"/>
-                <polyline points="{{ t.points }}" fill="none" stroke="currentColor"
-                          stroke-width="1.2" vector-effect="non-scaling-stroke"
-                          stroke-linejoin="round" stroke-linecap="round"/>
-            </svg>
+        <div class="birds-trend-head">
             <span class="birds-trend-value">{{ t.today }}</span>
+            {% if t.rank is not none %}
+            <span class="birds-trend-rank">{% if key == "detections" %}busier{% else %}more species{% endif %} than {{ t.rank }}% of {{ noun }} by now</span>
+            {% else %}
+            <span class="birds-trend-rank">not enough history to compare yet</span>
+            {% endif %}
         </div>
-        <div class="birds-trend-axis"><span>{{ trend.first_label }}</span><span>max {{ t.max }}</span></div>
+        <svg viewBox="0 0 {{ g.w }} {{ g.h }}" class="birds-curve" role="img"
+             aria-label="{{ title }}: today against the last {{ trend.history_days }} days">
+            {# daylight #}
+            <rect x="{{ trend.sun[0] }}" y="{{ g.t }}" width="{{ trend.sun[1] - trend.sun[0] }}" height="{{ g.b - g.t }}" class="bc-day"/>
+            {% for tick in trend.ticks %}
+            <line x1="{{ tick.x }}" y1="{{ g.t }}" x2="{{ tick.x }}" y2="{{ g.b }}" class="bc-grid"/>
+            <text x="{{ tick.x }}" y="{{ g.b + 13 }}" text-anchor="middle" class="bc-tick">{{ tick.label }}</text>
+            {% endfor %}
+            <line x1="{{ g.l }}" y1="{{ g.b }}" x2="{{ g.r }}" y2="{{ g.b }}" class="bc-base"/>
+            <text x="{{ g.l }}" y="{{ g.t + 3 }}" class="bc-tick">{{ t.top_label }}</text>
+
+            {% if t.band %}
+            <polygon points="{{ t.band }}" class="bc-band"><title>Middle half of the last {{ trend.history_days }} days</title></polygon>
+            {% endif %}
+            {% for rec, cls, word in [(t.high, "bc-high", "Busiest"), (t.low, "bc-low", "Quietest")] %}
+            {% if rec %}
+            <polyline points="{{ rec.points }}" class="bc-record {{ cls }}"><title>{{ word }} day: {{ rec.label }}</title></polyline>
+            <text x="{{ g.r + 4 }}" y="{{ rec.y + 3 }}" class="bc-rec-label {{ cls }}">{{ rec.label }}</text>
+            {% endif %}
+            {% endfor %}
+
+            <polyline points="{{ t.today_points }}" class="bc-today"/>
+            <circle cx="{{ t.today_end[0] }}" cy="{{ t.today_end[1] }}" r="2.5" class="bc-today-dot"/>
+        </svg>
     </div>
     {% endfor %}
 </div>
+<p class="birds-trend-key">Bold: today · shaded: middle half of the last {{ trend.history_days }} days · dashed: busiest and quietest days. Times are sun-aligned, like the heatmap.</p>
 
 {% include "partials/birds_heatmap.html" %}
 
@@ -114,33 +136,30 @@
     font-size: 0.85rem;
     color: #666;
 }
-.birds-trend-row {
+.birds-trend-head {
     display: flex;
-    align-items: center;
-    gap: 0.6rem;
-}
-.birds-spark {
-    flex: 1;
-    height: 2.2rem;
-    color: #2e7d32;
-}
-.birds-spark-base {
-    stroke: #ccc;
-    stroke-width: 1;
+    align-items: baseline;
+    gap: 0.5rem;
 }
 .birds-trend-value {
     font-size: 1.15rem;
     font-weight: bold;
-    min-width: 2.5ch;
-    text-align: right;
 }
-.birds-trend-axis {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.7rem;
-    color: #aaa;
-    margin-right: 3.1ch;
-}
+.birds-trend-rank { font-size: 0.8rem; color: #888; }
+.birds-curve { width: 100%; height: auto; display: block; }
+.bc-day { fill: #fbf8ec; }
+.bc-grid { stroke: #ebebeb; stroke-width: 1; }
+.bc-base { stroke: #ccc; stroke-width: 1; }
+.bc-tick { font-size: 9px; fill: #aaa; }
+.bc-band { fill: #2e7d32; fill-opacity: 0.14; }
+.bc-record { fill: none; stroke-width: 1; stroke-dasharray: 3,3; }
+.bc-high { stroke: #2e7d32; fill: #2e7d32; }
+.bc-low { stroke: #999; fill: #999; }
+polyline.bc-high, polyline.bc-low { fill: none; }
+.bc-rec-label { font-size: 9px; stroke: none; }
+.bc-today { fill: none; stroke: #111; stroke-width: 2.2; stroke-linejoin: round; }
+.bc-today-dot { fill: #111; }
+.birds-trend-key { font-size: 0.75rem; color: #999; margin: -0.75rem 0 1.5rem; }
 
 .birds-section {
     font-size: 1.1rem;
@@ -249,7 +268,12 @@
 @media (prefers-color-scheme: dark) {
     .birds-back:hover, .birds-view-btn:hover, .birds-view-btn.active { color: #ddd; }
     .bh-name { color: #ccc; }
-    .birds-spark { color: #66bb6a; }
+    .bc-day { fill: rgba(224, 176, 80, 0.07); }
+    .bc-grid { stroke: #333; }
+    .bc-band { fill: #66bb6a; fill-opacity: 0.18; }
+    .bc-high { stroke: #66bb6a; fill: #66bb6a; }
+    .bc-today { stroke: #eee; }
+    .bc-today-dot { fill: #eee; }
     .bh-cell { background: rgba(102, 187, 106, var(--a, 0)); }
     .bh-cell.bh-zero { background: rgba(128, 128, 128, 0.15); }
     .bh-cell.bh-zero.bh-night { background: rgba(150, 160, 200, 0.10); }

@@ -32,7 +32,18 @@ SITE_LABEL = "Wentworth"
 # BirdNET-Go's (deliberately coarse) location for the cabin, used for sunrise/sunset
 SUN_LAT, SUN_LON = 43.870, -71.913
 
-TREND_DAYS = 30  # sparklines: detections and species per day
+# "So far today" curves: today's running totals against the same time of day on the
+# previous CUMULATIVE_DAYS complete days (kept to a season, since busyness is seasonal)
+CUMULATIVE_DAYS = 90
+CUMULATIVE_EVERY = "15m"
+CUMULATIVE_BIN_MIN = 15
+CUMULATIVE_BINS = 24 * 60 // CUMULATIVE_BIN_MIN
+CUMULATIVE_MIN_HISTORY = 5  # fewer comparison days than this: no band or rank yet
+HEARTBEAT_EXPECTED = 288  # relay heartbeats per full day (every 5 min)
+HEARTBEAT_MIN_COVERAGE = 0.9
+# Curve geometry (SVG user units)
+CURVE_W, CURVE_H = 320, 120
+CURVE_L, CURVE_R, CURVE_T, CURVE_B = 4, 250, 8, 100
 WEEK_DAYS = 7  # heatmap "7 days" view
 MONTH_DAYS = 30  # heatmap "30 days" view: sun-aligned, so dawn still lines up across the month
 HEATMAP_ROWS = 15  # most-detected species shown in the heatmap
@@ -217,36 +228,175 @@ def build_heatmap(
     return {"rows": rows, "more": max(len(ranked) - HEATMAP_ROWS, 0)}
 
 
-def _sparkline(values: list[int]) -> dict:
-    """Polyline points in a 0..100 × 0..30 box (y up), plus the last point."""
-    top = max(values, default=0) or 1
-    n = max(len(values) - 1, 1)
-    pts = [(round(i / n * 100, 2), round(30 - v / top * 28 - 1, 2)) for i, v in enumerate(values)]
-    return {"points": " ".join(f"{x},{y}" for x, y in pts), "last": pts[-1], "max": top}
+def _quantile(sorted_vals: list[float], q: float) -> float:
+    """Linear-interpolated quantile of an already-sorted list."""
+    pos = (len(sorted_vals) - 1) * q
+    lo = int(pos)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (pos - lo)
 
 
-def build_trend(
-    daily: list[tuple[datetime, str, int]], today: date, earliest: date | None = None
+def _bin_of(placed: datetime, today: date) -> int:
+    """15-minute bin on today's axis, clamped to the day (sun-shifted night windows
+    can land just before midnight or just after the next one)."""
+    minutes = (placed - _local_midnight(today)).total_seconds() / 60
+    return max(0, min(CUMULATIVE_BINS - 1, int(minutes // CUMULATIVE_BIN_MIN)))
+
+
+def _running_totals(
+    windows: list[tuple[datetime, str, int]], today: date, place: Callable[[datetime], datetime]
+) -> dict[date, tuple[list[int], list[int]]]:
+    """{day: (cumulative detections, cumulative distinct species)} per bin of today's axis."""
+    counts: dict[date, list[int]] = defaultdict(lambda: [0] * CUMULATIVE_BINS)
+    first_heard: dict[date, dict[str, int]] = defaultdict(dict)
+    for when, name, count in windows:
+        b = _bin_of(place(when), today)
+        day = when.date()
+        counts[day][b] += count
+        first_heard[day][name] = min(b, first_heard[day].get(name, b))
+    out = {}
+    for day, per_bin in counts.items():
+        new_species = [0] * CUMULATIVE_BINS
+        for b in first_heard[day].values():
+            new_species[b] += 1
+        out[day] = (_cumsum(per_bin), _cumsum(new_species))
+    return out
+
+
+def _cumsum(values: list[int]) -> list[int]:
+    total, out = 0, []
+    for v in values:
+        total += v
+        out.append(total)
+    return out
+
+
+def _curve_x(b: int) -> float:
+    """Right edge of bin b: a running total is "as of the end of" its bin."""
+    return round(CURVE_L + (b + 1) / CUMULATIVE_BINS * (CURVE_R - CURVE_L), 1)
+
+
+def build_cumulative(
+    windows: list[tuple[datetime, str, int]],
+    today: date,
+    now: datetime,
+    history: list[date],
+    place: Callable[[datetime], datetime],
 ) -> dict:
-    """Detections and unique species per local day over the last TREND_DAYS days.
+    """Running detection / species totals for today vs. the same time on `history` days:
+    25th–75th percentile band, the record-high and record-low days, and today's rank."""
+    totals = _running_totals(windows, today, place)
+    now_bin = _bin_of(now, today)
+    past = [d for d in history if d in totals]
+    out: dict = {"history_days": len(past)}
 
-    Starts at `earliest` (the first day of records) if that is more recent, so days
-    before the detector existed don't read as a quiet stretch.
-    """
-    first = today - timedelta(days=TREND_DAYS - 1)
-    if earliest and first < earliest <= today:
-        first = earliest
-    days = [first + timedelta(days=i) for i in range((today - first).days + 1)]
-    per_day: dict[date, Counter] = defaultdict(Counter)
-    for when, name, count in daily:
-        per_day[when.date()][name] += count
-    detections = [sum(per_day[d].values()) for d in days]
-    species = [len(per_day[d]) for d in days]
-    return {
-        "detections": {**_sparkline(detections), "today": detections[-1]},
-        "species": {**_sparkline(species), "today": species[-1]},
-        "first_label": days[0].strftime("%b %-d"),
+    for idx, key in enumerate(("detections", "species")):
+        today_curve = totals.get(today, ([0] * CUMULATIVE_BINS, [0] * CUMULATIVE_BINS))[idx]
+        curves = {d: totals[d][idx] for d in past}
+        current = today_curve[now_bin]
+        enough = len(curves) >= CUMULATIVE_MIN_HISTORY
+
+        band_lo = band_hi = None
+        high = low = None
+        if enough:
+            cols = [sorted(c[b] for c in curves.values()) for b in range(CUMULATIVE_BINS)]
+            band_lo = [_quantile(col, 0.25) for col in cols]
+            band_hi = [_quantile(col, 0.75) for col in cols]
+            high = max(curves, key=lambda d: (curves[d][-1], d))
+            low = min(curves, key=lambda d: (curves[d][-1], d))
+
+        top = max([current, *(curves[high] if high else []), *(band_hi or [])], default=0)
+        top = max(top * 1.08, 5)
+
+        def y(v: float, top: float = top) -> float:
+            return round(CURVE_B - v / top * (CURVE_B - CURVE_T), 1)
+
+        def path(curve: list, upto: int = CUMULATIVE_BINS - 1) -> str:
+            pts = [(CURVE_L, CURVE_B)] + [(_curve_x(b), y(curve[b])) for b in range(upto + 1)]
+            return " ".join(f"{px},{py}" for px, py in pts)
+
+        def record(day: date | None, curves: dict = curves) -> dict | None:
+            if day is None:
+                return None
+            total = curves[day][-1]
+            return {
+                "points": path(curves[day]),
+                "label": f"{day.strftime('%b')} {day.day} · {total}",
+                "y": y(total),
+            }
+
+        band = None
+        if band_lo and band_hi:
+            upper = [(_curve_x(b), y(band_hi[b])) for b in range(CUMULATIVE_BINS)]
+            lower = [(_curve_x(b), y(band_lo[b])) for b in reversed(range(CUMULATIVE_BINS))]
+            band = " ".join(f"{px},{py}" for px, py in [(CURVE_L, CURVE_B), *upper, *lower])
+
+        rank = None
+        if enough:
+            at_now = [c[now_bin] for c in curves.values()]
+            below = sum(v < current for v in at_now) + 0.5 * sum(v == current for v in at_now)
+            rank = round(100 * below / len(at_now))
+
+        high_rec, low_rec = record(high), record(low)
+        # Keep the two right-edge labels from overprinting when the records are close
+        if high_rec and low_rec and low_rec["y"] - high_rec["y"] < 11:
+            low_rec["y"] = high_rec["y"] + 11
+        out[key] = {
+            "today": current,
+            "rank": rank,
+            "band": band,
+            "high": high_rec,
+            "low": low_rec,
+            "today_points": path(today_curve, now_bin),
+            "today_end": (_curve_x(now_bin), y(current)),
+            "top_label": int(top),
+        }
+
+    rise, sunset = (t.astimezone(TZ_BOSTON) for t in sun_times(today))
+    out["ticks"] = [
+        {"x": _curve_x(h * 60 // CUMULATIVE_BIN_MIN - 1), "label": label}
+        for h, label in ((6, "6am"), (12, "noon"), (18, "6pm"))
+    ]
+    out["sun"] = [_curve_x(_bin_of(rise, today)), _curve_x(_bin_of(sunset, today))]
+    out["geom"] = {
+        "w": CURVE_W,
+        "h": CURVE_H,
+        "l": CURVE_L,
+        "r": CURVE_R,
+        "t": CURVE_T,
+        "b": CURVE_B,
     }
+    return out
+
+
+HEARTBEAT_DAILY_QUERY = f"""import "timezone"
+option location = timezone.location(name: "America/New_York")
+
+from(bucket: "{BUCKET}")
+  |> range(start: -{CUMULATIVE_DAYS + 1}d)
+  |> filter(fn: (r) => r._measurement == "relay_heartbeat" and r.site == "{SITE}")
+  |> group()
+  |> aggregateWindow(every: 1d, fn: count, timeSrc: "_start", createEmpty: false)
+"""
+
+
+def comparison_days(today: date, earliest: date | None, heartbeats: dict[date, int]) -> list[date]:
+    """Complete days to compare today against: after the first (partial) day of records,
+    before today, and, once the relay started sending heartbeats, only days it was up
+    for at least HEARTBEAT_MIN_COVERAGE of (so an outage doesn't read as a quiet day)."""
+    first = today - timedelta(days=CUMULATIVE_DAYS)
+    if earliest:
+        first = max(first, earliest + timedelta(days=1))
+    heartbeat_start = min(heartbeats, default=None)
+    days = []
+    for i in range((today - first).days):
+        d = first + timedelta(days=i)
+        relay_down = heartbeats.get(d, 0) < HEARTBEAT_MIN_COVERAGE * HEARTBEAT_EXPECTED
+        # the first heartbeat day is partial by definition: the relay started mid-day
+        if heartbeat_start and d > heartbeat_start and relay_down:
+            continue
+        days.append(d)
+    return days
 
 
 def find_arrivals(
@@ -304,7 +454,7 @@ def fetch_birds_data(view: str = DEFAULT_VIEW) -> dict:
     """Query InfluxDB and assemble everything the birds page shows."""
     now = datetime.now(TZ_BOSTON)
     today = now.date()
-    history_days = max(TREND_DAYS, ARRIVAL_WINDOW_DAYS + ARRIVAL_ABSENCE_DAYS)
+    history_days = ARRIVAL_WINDOW_DAYS + ARRIVAL_ABSENCE_DAYS
 
     daily = _parse_counts(
         _query_influx(_counts_query(_local_midnight(today - timedelta(days=history_days)), "1d"))
@@ -316,7 +466,25 @@ def fetch_birds_data(view: str = DEFAULT_VIEW) -> dict:
         else None
     )
 
-    trend = build_trend(daily, today, earliest)
+    heartbeats = {
+        datetime.fromtimestamp(_parse_ts(r["_time"]), TZ_BOSTON).date(): int(r["_value"])
+        for r in _query_influx(HEARTBEAT_DAILY_QUERY)
+        if r.get("_time") and r.get("_value")
+    }
+    windows = _parse_counts(
+        _query_influx(
+            _counts_query(
+                _local_midnight(today - timedelta(days=CUMULATIVE_DAYS)), CUMULATIVE_EVERY
+            )
+        )
+    )
+    trend = build_cumulative(
+        windows,
+        today,
+        now,
+        comparison_days(today, earliest, heartbeats),
+        place=lambda when: to_today_sun(when + timedelta(minutes=CUMULATIVE_BIN_MIN / 2), today),
+    )
     return {
         **fetch_heatmap(view),
         "site_label": SITE_LABEL,

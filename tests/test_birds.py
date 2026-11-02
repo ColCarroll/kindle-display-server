@@ -82,53 +82,77 @@ def test_heatmap_empty():
     assert birds.build_heatmap([], TODAY, "today", now_hour=6) == {"rows": [], "more": 0}
 
 
-# ── Trends ──
+# ── So-far-today curves ──
 
 
-def test_trend_counts_detections_and_unique_species_per_day():
-    daily = [
-        (_at(TODAY), "Blue Jay", 10),
-        (_at(TODAY), "Barred Owl", 2),
-        (_at(_days_ago(1)), "Blue Jay", 5),
-    ]
-
-    trend = birds.build_trend(daily, TODAY)
-
-    assert trend["detections"]["today"] == 12
-    assert trend["species"]["today"] == 2
-    assert trend["detections"]["max"] == 12
-    # 30 zero-filled days → 30 points, the last at x=100
-    assert len(trend["detections"]["points"].split()) == birds.TREND_DAYS
-    assert trend["detections"]["last"][0] == 100
+def _same_clock(when: datetime) -> datetime:
+    """Identity placement: keep tests about counting, not the sun shift."""
+    return when.replace(year=TODAY.year, month=TODAY.month, day=TODAY.day)
 
 
-def test_trend_starts_at_first_day_of_records():
-    daily = [(_at(_days_ago(4)), "Blue Jay", 3), (_at(TODAY), "Blue Jay", 5)]
-
-    trend = birds.build_trend(daily, TODAY, earliest=_days_ago(4))
-
-    assert len(trend["detections"]["points"].split()) == 5  # 4 days ago .. today
-    assert trend["first_label"] == _days_ago(4).strftime("%b %-d")
+def _day_windows(day: date, per_hour: dict[int, list[tuple[str, int]]]):
+    return [(_at(day, h), name, n) for h, items in per_hour.items() for name, n in items]
 
 
-def test_trend_ignores_earliest_older_than_window():
-    trend = birds.build_trend([], TODAY, earliest=_days_ago(400))
+def test_running_totals_count_detections_and_new_species():
+    windows = _day_windows(TODAY, {6: [("Blue Jay", 3)], 7: [("Blue Jay", 2), ("Owl", 1)]})
 
-    assert len(trend["detections"]["points"].split()) == birds.TREND_DAYS
+    det, sp = birds._running_totals(windows, TODAY, _same_clock)[TODAY]
 
-
-def test_trend_with_one_day_of_records():
-    trend = birds.build_trend([(_at(TODAY), "Blue Jay", 5)], TODAY, earliest=TODAY)
-
-    assert trend["detections"]["today"] == 5
-    assert len(trend["detections"]["points"].split()) == 1
+    six, seven = 6 * 4, 7 * 4  # 15-minute bins
+    assert det[six - 1] == 0 and det[six] == 3 and det[seven] == 6 and det[-1] == 6
+    assert sp[six] == 1 and sp[seven] == 2 and sp[-1] == 2
 
 
-def test_trend_with_no_data_is_flat():
-    trend = birds.build_trend([], TODAY)
+def test_cumulative_band_records_and_rank():
+    history = [_days_ago(i) for i in range(1, 11)]  # 10 past days, totals 10..100
+    windows = []
+    for i, d in enumerate(history, start=1):
+        windows += _day_windows(d, {7: [("Blue Jay", 10 * i)]})
+    windows += _day_windows(TODAY, {7: [("Blue Jay", 75)]})
+    now = _at(TODAY, 9)
 
-    assert trend["detections"]["today"] == 0
-    assert trend["species"]["max"] == 1  # avoids dividing by zero
+    trend = birds.build_cumulative(windows, TODAY, now, history, _same_clock)
+    det = trend["detections"]
+
+    assert det["today"] == 75
+    assert det["rank"] == 70  # beats 7 of the 10 days at 9am
+    assert det["high"]["label"] == f"{_days_ago(10):%b} {_days_ago(10).day} · 100"
+    assert det["low"]["label"].endswith("· 10")
+    assert det["band"] is not None
+    assert trend["history_days"] == 10
+
+
+def test_no_band_or_rank_until_enough_history():
+    windows = _day_windows(_days_ago(1), {7: [("Blue Jay", 5)]})
+    trend = birds.build_cumulative(windows, TODAY, _at(TODAY, 9), [_days_ago(1)], _same_clock)
+    assert trend["detections"]["rank"] is None and trend["detections"]["band"] is None
+
+
+def test_today_curve_stops_at_now():
+    windows = _day_windows(TODAY, {6: [("Blue Jay", 3)]})
+    trend = birds.build_cumulative(windows, TODAY, _at(TODAY, 9), [], _same_clock)
+    pts = trend["detections"]["today_points"].split()
+    assert len(pts) == 1 + 9 * 4 + 1  # origin + bins 0 through the 9:00 bin
+
+
+def test_comparison_days_skip_first_partial_day_and_relay_outages():
+    earliest = _days_ago(10)
+    heartbeats = {_days_ago(4): 29, _days_ago(3): 288, _days_ago(2): 100, _days_ago(1): 287}
+
+    days = birds.comparison_days(TODAY, earliest, heartbeats)
+
+    assert days[0] == _days_ago(9)  # not the partial first day
+    assert _days_ago(2) not in days  # relay down most of the day
+    assert _days_ago(4) in days  # heartbeats started mid-day: not an outage
+    assert _days_ago(5) in days  # before heartbeats existed: assume it was up
+    assert _days_ago(1) in days and TODAY not in days
+
+
+def test_night_windows_shifted_past_midnight_clamp_to_the_axis():
+    late = datetime(TODAY.year, TODAY.month, TODAY.day, 23, 59, tzinfo=birds.TZ_BOSTON)
+    assert birds._bin_of(late + timedelta(hours=2), TODAY) == birds.CUMULATIVE_BINS - 1
+    assert birds._bin_of(late - timedelta(days=1), TODAY) == 0
 
 
 # ── Arrivals ──
@@ -239,7 +263,7 @@ def fake_influx(monkeypatch):
                         "confidence": "3",
                     }
                 ]
-            if "every: 1d" in query:
+            if "every: 1d" in query or "every: 15m" in query:
                 return [
                     {
                         "_time": _influx_ts(_at(today)),
@@ -443,9 +467,10 @@ def test_heatmap_partial_requires_auth(fake_influx):
     assert TestClient(app).get("/partials/birds-heatmap").status_code == 401
 
 
-def test_sparklines_have_a_zero_baseline(client, fake_influx):
+def test_page_draws_both_so_far_curves(client, fake_influx):
     fake_influx()
 
     resp = client.get("/birds")
 
-    assert resp.text.count('class="birds-spark-base"') == 2
+    assert resp.text.count('class="birds-curve"') == 2
+    assert "not enough history to compare yet" in resp.text  # fake has no past days
