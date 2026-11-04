@@ -241,3 +241,17 @@ def test_y_range_bottom_is_the_stop_today_line():
 def test_y_range_still_shows_the_actual_line():
     chart = _chart(detrended=[{"day": 0, "detrended": 0}, {"day": 100, "detrended": -900}])
     assert chart["y_min"] < -900
+
+
+def test_todays_endpoint_is_centered():
+    chart = _chart()
+    assert chart["y_min"] == -chart["y_max"]  # the actual line ends at 0, mid-chart
+
+
+def test_top_mirrors_stopping_when_the_cap_is_far_above_current_pace():
+    # Elevation-like: 121,627 ft at ~395 ft/day, cap 2,000 ft/day sustained
+    chart = build_pace_chart(121_627, 308, 365, 57, [{"day": 0, "detrended": 0}], 10_000, 2_000)
+    top = max(line["target"] for line in chart["lines"])
+    pace = 121_627 / 308
+    assert top <= 121_627 + 2 * pace * 57  # ≈ 2x current pace, not 2,000 ft/day
+    assert top > 121_627 + 1.5 * pace * 57

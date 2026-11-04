@@ -128,17 +128,22 @@ def build_pace_chart(
     per_day: float,
     sustained: float,
 ) -> dict:
-    """Year-end target lines for the detrended chart, plus a y range limited to
-    reachable totals (and always wide enough to show the actual line).
+    """Year-end target lines for the detrended chart, plus a y range centered on
+    where the actual line ends today.
 
     The chart's x-axis runs Jan 1 → today and each target T is a line from the origin
     ending at (T / days_in_year − avg/day) × days_elapsed, so ranges are taken at the
-    right edge. Lines come every half step; whole steps are labeled.
+    right edge, where the actual (detrended) line ends at 0 = keeping the current pace.
+    The bottom is stopping today (0/day); the top mirrors it at twice the current pace,
+    capped at what is physically reachable. Lines come every half step; whole steps
+    are labeled. The range always stays wide enough to show the whole actual line.
     """
     if days_elapsed <= 0:
         return {"lines": [], "y_min": -1.0, "y_max": 1.0}
     avg = total / days_elapsed
-    reachable = total + max_still_possible(days_remaining, per_day, sustained)
+    possible = max_still_possible(days_remaining, per_day, sustained)
+    mirror = 2 * avg * days_remaining  # as far above today's pace as stopping is below it
+    reachable = total + (min(possible, mirror) if mirror > 0 else possible)
     span = reachable - total
     step = next((s for s in PACE_STEPS if span / s <= PACE_MAX_MAJOR), PACE_STEPS[-1])
     half = step / 2
@@ -161,10 +166,9 @@ def build_pace_chart(
         target += half
 
     values = [p["detrended"] for p in detrended]
-    lo = min([y_end(total), *values])
-    hi = max([y_end(reachable), *values])
-    pad = (hi - lo) * 0.05 or 1.0
-    return {"lines": lines, "y_min": lo - pad, "y_max": hi + pad, "step": step}
+    half_range = max(abs(y_end(total)), abs(y_end(reachable)), *(abs(v) for v in values))
+    half_range = half_range * 1.05 or 1.0
+    return {"lines": lines, "y_min": -half_range, "y_max": half_range, "step": step}
 
 
 logger = logging.getLogger(__name__)
