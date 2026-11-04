@@ -28,11 +28,9 @@
             {% set days_elapsed = data.days_elapsed %}
             {% set days_remaining = data.days_remaining %}
 
-            <!-- Y-axis range: where fastest (4000) and slowest (2500) pace lines are at current day -->
-            {% set max_slope = (4000 / days_in_year - data.avg_miles_per_day) %}
-            {% set min_slope = (2500 / days_in_year - data.avg_miles_per_day) %}
-            {% set y_max = max_slope * days_elapsed * 1.15 %}
-            {% set y_min = min_slope * days_elapsed * 1.15 %}
+            <!-- Y-axis range: only year-end totals still within reach (see build_pace_chart) -->
+            {% set y_max = data.pace_chart.y_max %}
+            {% set y_min = data.pace_chart.y_min %}
             {% set y_range = y_max - y_min if y_max != y_min else 1 %}
 
             <!-- Background with clip path -->
@@ -44,20 +42,18 @@
             <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}" fill="none"/>
 
             <!-- Pace target lines (x-axis goes to days_elapsed, not full year) - clipped to chart area -->
-            {% for pace in data.pace_lines %}
+            {% for pace in data.pace_chart.lines %}
             {% set y_start = chart_top + ((y_max - 0) / y_range * chart_height) %}
             {% set y_end_value = pace.slope * days_elapsed %}
             {% set y_end = chart_top + ((y_max - y_end_value) / y_range * chart_height) %}
-            {% set miles_needed = pace.target - data.yearly_distance_mi %}
-            {% set miles_per_day_needed = miles_needed / days_remaining if days_remaining > 0 else 0 %}
             <line x1="{{ chart_left }}" y1="{{ y_start }}" x2="{{ chart_right }}" y2="{{ y_end }}"
-                  stroke="{% if pace.target % 500 == 0 %}#666{% else %}#ccc{% endif %}"
-                  stroke-width="{% if pace.target % 500 == 0 %}1.5{% else %}1{% endif %}"
-                  stroke-dasharray="{% if pace.target % 500 == 0 %}5,3{% else %}3,3{% endif %}"
+                  stroke="{% if pace.major %}#666{% else %}#ccc{% endif %}"
+                  stroke-width="{% if pace.major %}1.5{% else %}1{% endif %}"
+                  stroke-dasharray="{% if pace.major %}5,3{% else %}3,3{% endif %}"
                   clip-path="url(#chart-clip)"/>
-            {% if pace.target % 500 == 0 %}
+            {% if pace.major %}
             <text x="{{ chart_right + 5 }}" y="{{ y_end + 5 }}" font-size="11" fill="#666" text-anchor="start">
-                {{ pace.target }} ({{ "%.1f"|format(miles_per_day_needed) }}/d)
+                {{ pace.target|int }} ({{ "%.1f"|format(pace.needed_per_day) }}/d)
             </text>
             {% endif %}
             {% endfor %}
@@ -127,11 +123,9 @@
             {% set days_elapsed = data.days_elapsed %}
             {% set days_remaining = data.days_remaining %}
 
-            <!-- Y-axis range: where fastest (250k) and slowest (100k) pace lines are at current day -->
-            {% set max_slope = (250000 / days_in_year - data.avg_elevation_per_day) %}
-            {% set min_slope = (100000 / days_in_year - data.avg_elevation_per_day) %}
-            {% set y_max = max_slope * days_elapsed * 1.15 %}
-            {% set y_min = min_slope * days_elapsed * 1.15 %}
+            <!-- Y-axis range: only year-end totals still within reach (see build_pace_chart) -->
+            {% set y_max = data.elevation_pace_chart.y_max %}
+            {% set y_min = data.elevation_pace_chart.y_min %}
             {% set y_range = y_max - y_min if y_max != y_min else 1 %}
 
             <!-- Background with clip path -->
@@ -143,20 +137,18 @@
             <rect x="{{ chart_left }}" y="{{ chart_top }}" width="{{ chart_width }}" height="{{ chart_height }}" fill="none"/>
 
             <!-- Elevation pace target lines -->
-            {% for pace in data.elevation_pace_lines %}
+            {% for pace in data.elevation_pace_chart.lines %}
             {% set y_start = chart_top + ((y_max - 0) / y_range * chart_height) %}
             {% set y_end_value = pace.slope * days_elapsed %}
             {% set y_end = chart_top + ((y_max - y_end_value) / y_range * chart_height) %}
-            {% set elev_needed = pace.target - data.yearly_elevation_ft %}
-            {% set elev_per_day_needed = elev_needed / days_remaining if days_remaining > 0 else 0 %}
             <line x1="{{ chart_left }}" y1="{{ y_start }}" x2="{{ chart_right }}" y2="{{ y_end }}"
-                  stroke="{% if pace.target % 50000 == 0 %}#666{% else %}#ccc{% endif %}"
-                  stroke-width="{% if pace.target % 50000 == 0 %}1.5{% else %}1{% endif %}"
-                  stroke-dasharray="{% if pace.target % 50000 == 0 %}5,3{% else %}3,3{% endif %}"
+                  stroke="{% if pace.major %}#666{% else %}#ccc{% endif %}"
+                  stroke-width="{% if pace.major %}1.5{% else %}1{% endif %}"
+                  stroke-dasharray="{% if pace.major %}5,3{% else %}3,3{% endif %}"
                   clip-path="url(#elev-chart-clip)"/>
-            {% if pace.target % 50000 == 0 %}
+            {% if pace.major %}
             <text x="{{ chart_right + 5 }}" y="{{ y_end + 5 }}" font-size="11" fill="#666" text-anchor="start">
-                {{ (pace.target / 1000)|int }}k ({{ elev_per_day_needed|int }}/d)
+                {{ "%g"|format(pace.target / 1000) }}k ({{ pace.needed_per_day|int }}/d)
             </text>
             {% endif %}
             {% endfor %}

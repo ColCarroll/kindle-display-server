@@ -193,3 +193,51 @@ def test_detrended_sawtooth_pattern():
             found_jump = True
 
     assert found_jump, "Should have found at least one run jump"
+
+
+# ── Year-end pace chart range ──
+
+from app.fetchers.strava import build_pace_chart, max_still_possible  # noqa: E402
+
+
+def test_max_still_possible_uses_daily_cap_for_a_week_then_sustained():
+    assert max_still_possible(3, 30, 15) == 90  # three huge days
+    assert max_still_possible(10, 30, 15) == 210  # one huge week beats 10 days at 15
+    assert max_still_possible(57, 30, 15) == 855  # beyond two weeks: sustained wins
+    assert max_still_possible(0, 30, 15) == 0
+
+
+def _chart(total=3000.0, elapsed=308.0, remaining=57.0, detrended=None):
+    return build_pace_chart(
+        total, elapsed, 365, remaining, detrended or [{"day": 0, "detrended": 0}], 30, 15
+    )
+
+
+def test_pace_lines_only_cover_reachable_totals():
+    chart = _chart()
+    targets = [line["target"] for line in chart["lines"]]
+
+    assert min(targets) >= 3000  # never a total already passed (negative pace)
+    assert max(targets) <= 3000 + 855  # never faster than 15/day sustained
+    assert all(line["needed_per_day"] >= 0 for line in chart["lines"])
+    assert all(line["needed_per_day"] <= 15 for line in chart["lines"])
+
+
+def test_pace_lines_get_smaller_divisions_for_a_narrow_range():
+    chart = _chart()
+    majors = [line["target"] for line in chart["lines"] if line["major"]]
+
+    assert chart["step"] == 200
+    assert majors == [3000, 3200, 3400, 3600, 3800]
+    assert len(chart["lines"]) == 9  # half steps in between
+
+
+def test_y_range_bottom_is_the_stop_today_line():
+    chart = _chart()
+    stop_today = (3000 / 365 - 3000 / 308) * 308
+    assert chart["y_min"] < stop_today < chart["y_min"] + 0.06 * (chart["y_max"] - chart["y_min"])
+
+
+def test_y_range_still_shows_the_actual_line():
+    chart = _chart(detrended=[{"day": 0, "detrended": 0}, {"day": 100, "detrended": -900}])
+    assert chart["y_min"] < -900

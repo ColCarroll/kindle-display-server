@@ -1,6 +1,7 @@
 """Strava data fetcher with caching."""
 
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -100,6 +101,71 @@ def polyline_to_svg_path(polyline_str: str, width: int = 100, height: int = 100)
 # Use timezone.utc for Python 3.10 compatibility (datetime.UTC added in 3.11)
 UTC = timezone.utc  # noqa: UP017
 EASTERN = ZoneInfo("America/New_York")
+
+# Year-end pace charts only show totals still within reach: from stopping today (0/day)
+# up to the most that could physically be added before Dec 31. A single day can go up
+# to the per-day cap; anything longer than a week is limited to the sustained cap.
+SUSTAINED_AFTER_DAYS = 7
+MAX_MI_PER_DAY, MAX_MI_PER_DAY_SUSTAINED = 30, 15
+MAX_FT_PER_DAY, MAX_FT_PER_DAY_SUSTAINED = 10_000, 2_000
+# Gridline spacing: the smallest "nice" step giving at most PACE_MAX_MAJOR labeled lines
+PACE_STEPS = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000]
+PACE_MAX_MAJOR = 6
+
+
+def max_still_possible(days_remaining: float, per_day: float, sustained: float) -> float:
+    """Most that can still be added this year: per_day for up to a week, sustained beyond."""
+    burst = per_day * min(days_remaining, SUSTAINED_AFTER_DAYS)
+    return max(burst, sustained * days_remaining, 0.0)
+
+
+def build_pace_chart(
+    total: float,
+    days_elapsed: float,
+    days_in_year: int,
+    days_remaining: float,
+    detrended: list[dict],
+    per_day: float,
+    sustained: float,
+) -> dict:
+    """Year-end target lines for the detrended chart, plus a y range limited to
+    reachable totals (and always wide enough to show the actual line).
+
+    The chart's x-axis runs Jan 1 → today and each target T is a line from the origin
+    ending at (T / days_in_year − avg/day) × days_elapsed, so ranges are taken at the
+    right edge. Lines come every half step; whole steps are labeled.
+    """
+    if days_elapsed <= 0:
+        return {"lines": [], "y_min": -1.0, "y_max": 1.0}
+    avg = total / days_elapsed
+    reachable = total + max_still_possible(days_remaining, per_day, sustained)
+    span = reachable - total
+    step = next((s for s in PACE_STEPS if span / s <= PACE_MAX_MAJOR), PACE_STEPS[-1])
+    half = step / 2
+
+    def y_end(target: float) -> float:
+        return (target / days_in_year - avg) * days_elapsed
+
+    lines = []
+    target = math.ceil(total / half) * half
+    while target <= reachable:
+        needed = (target - total) / days_remaining if days_remaining > 0 else 0.0
+        lines.append(
+            {
+                "target": target,
+                "slope": round(target / days_in_year - avg, 4),
+                "major": target % step == 0,
+                "needed_per_day": needed,
+            }
+        )
+        target += half
+
+    values = [p["detrended"] for p in detrended]
+    lo = min([y_end(total), *values])
+    hi = max([y_end(reachable), *values])
+    pad = (hi - lo) * 0.05 or 1.0
+    return {"lines": lines, "y_min": lo - pad, "y_max": hi + pad, "step": step}
+
 
 logger = logging.getLogger(__name__)
 
@@ -601,20 +667,15 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
         final_detrended = cumulative - avg_miles_per_day * days_elapsed
         detrended_data.append({"day": days_elapsed, "detrended": round(final_detrended, 1)})
 
-    # Calculate pace lines (detrended)
-    # For target T miles/year: detrended = (T/days_in_year - avg) * day
-    pace_targets = [2500, 2750, 3000, 3250, 3500, 3750, 4000]
-    pace_lines = []
-    for target in pace_targets:
-        target_per_day = target / days_in_year
-        slope = target_per_day - avg_miles_per_day
-        pace_lines.append(
-            {
-                "target": target,
-                "slope": round(slope, 4),
-                "target_per_day": round(target_per_day, 2),
-            }
-        )
+    pace_chart = build_pace_chart(
+        yearly_distance_mi or 0.0,
+        days_elapsed,
+        days_in_year,
+        days_remaining,
+        detrended_data,
+        MAX_MI_PER_DAY,
+        MAX_MI_PER_DAY_SUSTAINED,
+    )
 
     # Generate detrended elevation chart data (same sawtooth pattern as mileage)
     avg_elevation_per_day = (
@@ -653,19 +714,15 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
             {"day": days_elapsed, "detrended": round(final_detrended, 0)}
         )
 
-    # Elevation pace lines (targets in feet)
-    elevation_targets = [100000, 125000, 150000, 175000, 200000, 225000, 250000]
-    elevation_pace_lines = []
-    for target in elevation_targets:
-        target_per_day = target / days_in_year
-        slope = target_per_day - avg_elevation_per_day
-        elevation_pace_lines.append(
-            {
-                "target": target,
-                "slope": round(slope, 2),
-                "target_per_day": round(target_per_day, 0),
-            }
-        )
+    elevation_pace_chart = build_pace_chart(
+        yearly_elevation_ft or 0.0,
+        days_elapsed,
+        days_in_year,
+        days_remaining,
+        detrended_elevation_data,
+        MAX_FT_PER_DAY,
+        MAX_FT_PER_DAY_SUSTAINED,
+    )
 
     return {
         "weekly_distance_mi": round(weekly_distance_mi, 1),
@@ -686,7 +743,7 @@ def get_running_summary(use_cache: bool = True) -> dict[str, Any] | None:
         if projected_yearly_mi
         else 0,
         "detrended_data": detrended_data,
-        "pace_lines": pace_lines,
+        "pace_chart": pace_chart,
         "detrended_elevation_data": detrended_elevation_data,
-        "elevation_pace_lines": elevation_pace_lines,
+        "elevation_pace_chart": elevation_pace_chart,
     }
