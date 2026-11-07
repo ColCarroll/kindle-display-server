@@ -474,3 +474,25 @@ def test_page_draws_both_so_far_curves(client, fake_influx):
 
     assert resp.text.count('class="birds-curve"') == 2
     assert "not enough history to compare yet" in resp.text  # fake has no past days
+
+
+def test_record_line_is_the_most_any_day_had_by_each_time():
+    # Day A starts fast but finishes low; day B is slow but finishes highest.
+    a, b = _days_ago(1), _days_ago(2)
+    history = [a, b] + [_days_ago(i) for i in range(3, 8)]
+    windows = _day_windows(a, {6: [("Blue Jay", 50)]}) + _day_windows(
+        b, {6: [("Blue Jay", 10)], 18: [("Blue Jay", 100)]}
+    )
+    windows += _day_windows(TODAY, {6: [("Blue Jay", 40)]})
+    for d in history[2:]:  # ordinary days: 20 by 6am, nothing after
+        windows += _day_windows(d, {6: [("Blue Jay", 20)]})
+
+    det = birds.build_cumulative(windows, TODAY, _at(TODAY, 9), history, _same_clock)["detections"]
+
+    assert det["high"]["label"].endswith("· 110")  # labeled with the busiest full day (B)
+    # but at 9am the dashed line sits at day A's 50, above today's 40 → not 100%
+    nine = 9 * 4
+    top_at_nine = float(det["high"]["points"].split()[1 + nine].split(",")[1])
+    today_at_nine = det["today_end"][1]
+    assert top_at_nine < today_at_nine  # SVG y grows downward: record line is higher
+    assert det["rank"] < 100

@@ -296,16 +296,20 @@ def build_cumulative(
         current = today_curve[now_bin]
         enough = len(curves) >= CUMULATIVE_MIN_HISTORY
 
-        band_lo = band_hi = None
+        band_lo = band_hi = env_lo = env_hi = None
         high = low = None
         if enough:
             cols = [sorted(c[b] for c in curves.values()) for b in range(CUMULATIVE_BINS)]
             band_lo = [_quantile(col, 0.25) for col in cols]
             band_hi = [_quantile(col, 0.75) for col in cols]
+            # Records at each time of day (may mix days): today above env_hi ⇔ rank 100%
+            env_lo = [col[0] for col in cols]
+            env_hi = [col[-1] for col in cols]
+            # ...labeled with the full-day record holders
             high = max(curves, key=lambda d: (curves[d][-1], d))
             low = min(curves, key=lambda d: (curves[d][-1], d))
 
-        top = max([current, *(curves[high] if high else []), *(band_hi or [])], default=0)
+        top = max([current, *(env_hi or [])], default=0)
         top = max(top * 1.08, 5)
 
         def y(v: float, top: float = top) -> float:
@@ -315,12 +319,12 @@ def build_cumulative(
             pts = [(CURVE_L, CURVE_B)] + [(_curve_x(b), y(curve[b])) for b in range(upto + 1)]
             return " ".join(f"{px},{py}" for px, py in pts)
 
-        def record(day: date | None, curves: dict = curves) -> dict | None:
-            if day is None:
+        def record(day: date | None, envelope: list | None, curves: dict = curves) -> dict | None:
+            if day is None or envelope is None:
                 return None
             total = curves[day][-1]
             return {
-                "points": path(curves[day]),
+                "points": path(envelope),
                 "label": f"{day.strftime('%b')} {day.day} · {total}",
                 "y": y(total),
             }
@@ -337,7 +341,7 @@ def build_cumulative(
             below = sum(v < current for v in at_now) + 0.5 * sum(v == current for v in at_now)
             rank = round(100 * below / len(at_now))
 
-        high_rec, low_rec = record(high), record(low)
+        high_rec, low_rec = record(high, env_hi), record(low, env_lo)
         # Keep the two right-edge labels from overprinting when the records are close
         if high_rec and low_rec and low_rec["y"] - high_rec["y"] < 11:
             low_rec["y"] = high_rec["y"] + 11

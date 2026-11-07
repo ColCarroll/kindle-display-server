@@ -46,7 +46,7 @@
             {% if t.band %}
             <polygon points="{{ t.band }}" class="bc-band"><title>Middle half of the last {{ trend.history_days }} days</title></polygon>
             {% endif %}
-            {% for rec, cls, word in [(t.high, "bc-high", "Busiest"), (t.low, "bc-low", "Quietest")] %}
+            {% for rec, cls, word in [(t.high, "bc-high", "Most so far at each time of day; busiest full day"), (t.low, "bc-low", "Fewest so far at each time of day; quietest full day")] %}
             {% if rec %}
             <polyline points="{{ rec.points }}" class="bc-record {{ cls }}"><title>{{ word }} day: {{ rec.label }}</title></polyline>
             <text x="{{ g.r + 4 }}" y="{{ rec.y + 3 }}" class="bc-rec-label {{ cls }}">{{ rec.label }}</text>
@@ -59,7 +59,7 @@
     </div>
     {% endfor %}
 </div>
-<p class="birds-trend-key">Bold: today · shaded: middle half of the last {{ trend.history_days }} days · dashed: busiest and quietest days. Times are sun-aligned, like the heatmap.</p>
+<p class="birds-trend-key">Bold: today · shaded: middle half of the last {{ trend.history_days }} days · dashed: the most and fewest any day had by that time (labels: busiest and quietest full days). Times are sun-aligned, like the heatmap.</p>
 
 {% include "partials/birds_heatmap.html" %}
 
